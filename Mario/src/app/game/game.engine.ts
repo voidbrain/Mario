@@ -29,14 +29,14 @@ export class GameEngine {
 
     mario: {
       id: 'mario',
-      x: 100,
+      x: 300,
       y: 372,
       width: 34,
       height: 48,
     },
     thwomp: {
       id: 'thwomp',
-      x: 430,
+      x: 390,
       y: 120,
       width: 80,
       height: 80,
@@ -60,32 +60,32 @@ export class GameEngine {
    */
 
   readonly marioBounds: Rect = {
-  x: -2000,
-  y: -2000,
-  width: 4600,
-  height: 4500,
-};
+    x: -10000,
+    y: -10000,
+    width: 20000,
+    height: 20000,
+  };
 
-readonly marioJointBounds: Rect = {
-  x: -2000,
-  y: -2000,
-  width: 4600,
-  height: 4500,
-};
+  readonly marioJointBounds: Rect = {
+    x: -10000,
+    y: -10000,
+    width: 20000,
+    height: 20000,
+  };
 
-readonly thwompBounds: Rect = {
-  x: -2000,
-  y: -2000,
-  width: 4600,
-  height: 4500,
-};
+  readonly thwompBounds: Rect = {
+    x: -10000,
+    y: -10000,
+    width: 20000,
+    height: 20000,
+  };
 
-readonly thwompJointBounds: Rect = {
-  x: -2000,
-  y: -2000,
-  width: 4600,
-  height: 4500,
-};
+  readonly thwompJointBounds: Rect = {
+    x: -10000,
+    y: -10000,
+    width: 20000,
+    height: 20000,
+  };
 
 
   /*
@@ -220,7 +220,7 @@ readonly thwompJointBounds: Rect = {
 
 
     this.state.mario.x =
-      60;
+      300;
 
 
     this.state.mario.y =
@@ -228,7 +228,7 @@ readonly thwompJointBounds: Rect = {
 
 
     this.state.thwomp.x =
-      430;
+      380;
 
 
     this.state.thwomp.y =
@@ -423,7 +423,7 @@ readonly thwompJointBounds: Rect = {
 
       if (!mechanism.valid) {
 
-        // this.state.mario.x =oldX;
+        this.state.mario.x =oldX;
       }
     }
 
@@ -489,7 +489,7 @@ readonly thwompJointBounds: Rect = {
 
       if (!mechanism.valid) {
 
-        // this.state.mario.y = oldY;
+        this.state.mario.y = oldY;
       }
 
 
@@ -579,10 +579,10 @@ readonly thwompJointBounds: Rect = {
 
     if (!mechanism.valid) {
 
-      // this.state.thwomp.y = oldY;
+      this.state.thwomp.y = oldY;
 
 
-      // this.thwompDirection *= -1;
+      this.thwompDirection *= -1;
     }
   }
 

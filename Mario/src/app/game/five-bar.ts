@@ -82,12 +82,10 @@ function pointInsideRect(
 
   return (
     point.x >= rect.x &&
-    point.x <=
-      rect.x + rect.width &&
+    point.x <= rect.x + rect.width &&
 
     point.y >= rect.y &&
-    point.y <=
-      rect.y + rect.height
+    point.y <= rect.y + rect.height
   );
 }
 
@@ -110,10 +108,12 @@ function solveTwoLink(
 ): JointSolution {
 
   const dx =
-    target.x - base.x;
+    target.x -
+    base.x;
 
   const dy =
-    target.y - base.y;
+    target.y -
+    base.y;
 
 
   const distance =
@@ -137,18 +137,18 @@ function solveTwoLink(
 
   /*
    * ============================================================
-   * PHYSICAL REACHABILITY
+   * UNREACHABLE: TOO FAR
    * ============================================================
-   */
-
-  const valid =
-    distance >= minReach &&
-    distance <= maxReach;
-
-
-  /*
-   * If the target is unreachable, return a finite diagnostic
-   * point, but preserve valid = false.
+   *
+   * IMPORTANT:
+   *
+   * Do NOT put the passive joint at maxReach.
+   *
+   * The passive joint belongs to the FIRST arm, therefore its
+   * distance from the base must NEVER exceed upperArm.
+   *
+   * The returned point is only a diagnostic point because
+   * valid = false.
    */
 
   if (
@@ -156,9 +156,30 @@ function solveTwoLink(
     maxReach
   ) {
 
+    if (
+      distance <
+      0.000001
+    ) {
+
+      return {
+        point: {
+          x:
+            base.x +
+            upperArm,
+
+          y:
+            base.y,
+        },
+
+        valid: false,
+      };
+    }
+
+
     const scale =
-      maxReach /
+      upperArm /
       distance;
+
 
     return {
 
@@ -180,15 +201,20 @@ function solveTwoLink(
   }
 
 
+  /*
+   * ============================================================
+   * UNREACHABLE: TOO CLOSE
+   * ============================================================
+   */
+
   if (
     distance <
     minReach
   ) {
 
     /*
-     * With equal arms this case is effectively distance = 0.
-     *
-     * Return a deterministic diagnostic point.
+     * Equal-length arms have minReach = 0, so this normally
+     * only matters for a different arm configuration.
      */
 
     if (
@@ -222,19 +248,39 @@ function solveTwoLink(
       distance;
 
 
+    /*
+     * Keep the passive joint exactly upperArm away from the
+     * base while reporting the configuration as invalid.
+     *
+     * This point is diagnostic only.
+     */
+
+    const direction =
+      Math.atan2(
+        dy,
+        dx,
+      );
+
+
+    const angle =
+      mirrored
+        ? direction + Math.PI
+        : direction;
+
+
     return {
 
       point: {
 
         x:
           base.x +
-          dx *
-          scale,
+          Math.cos(angle) *
+          upperArm,
 
         y:
           base.y +
-          dy *
-          scale,
+          Math.sin(angle) *
+          upperArm,
       },
 
       valid: false,
