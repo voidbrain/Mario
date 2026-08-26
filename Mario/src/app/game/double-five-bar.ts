@@ -24,23 +24,18 @@ export interface DoubleFiveBarGeometry {
 
 export class DoubleFiveBar {
 
-  /*
-   * Maximum freedom of movement for this
-   * complete double 5-bar.
-   *
-   * The rectangle is a constraint/envelope.
-   * It does NOT move the effector.
-   */
-
   readonly bounds: Rect;
 
+  readonly jointBounds: Rect;
+
 
   /*
-   * Upper 5-bar
+   * ============================================================
+   * UPPER FIVE-BAR
+   * ============================================================
    */
 
-  private readonly upperConfig:
-    FiveBarConfig = {
+  readonly upperConfig: FiveBarConfig = {
 
     baseLeft: {
       x: 80,
@@ -52,40 +47,46 @@ export class DoubleFiveBar {
       y: 80,
     },
 
-    upperArm: 420,
+    upperArm: 220,
 
-    lowerArm: 420,
+    lowerArm: 220,
   };
 
 
   /*
-   * Lower 5-bar
+   * ============================================================
+   * LOWER FIVE-BAR
+   * ============================================================
    */
 
-  private readonly lowerConfig:
-    FiveBarConfig = {
+  readonly lowerConfig: FiveBarConfig = {
 
     baseLeft: {
       x: 80,
-      y: 820,
+      y: 420,
     },
 
     baseRight: {
       x: 520,
-      y: 820,
+      y: 420,
     },
 
-    upperArm: 420,
+    upperArm: 220,
 
-    lowerArm: 420,
+    lowerArm: 220,
   };
 
 
   constructor(
     bounds: Rect,
+    jointBounds: Rect,
   ) {
 
-    this.bounds = bounds;
+    this.bounds =
+      bounds;
+
+    this.jointBounds =
+      jointBounds;
   }
 
 
@@ -93,11 +94,19 @@ export class DoubleFiveBar {
     effector: Point,
   ): DoubleFiveBarGeometry {
 
+    const effectorInside =
+      pointInsideRect(
+        effector,
+        this.bounds,
+      );
+
+
     const upper =
       calculateFiveBar(
         this.upperConfig,
         effector,
-        this.bounds,
+        this.jointBounds,
+        false,
       );
 
 
@@ -105,7 +114,8 @@ export class DoubleFiveBar {
       calculateFiveBar(
         this.lowerConfig,
         effector,
-        this.bounds,
+        this.jointBounds,
+        true,
       );
 
 
@@ -118,165 +128,23 @@ export class DoubleFiveBar {
       effector,
 
       valid:
+        effectorInside &&
         upper.valid &&
         lower.valid,
     };
   }
 }
-// import {
-//   FiveBarConfig,
-//   FiveBarGeometry,
-//   Point,
-//   Rect,
-// } from './types';
-
-// import {
-//   calculateFiveBar,
-// } from './five-bar';
 
 
-// export interface DoubleFiveBarGeometry {
+function pointInsideRect(
+  point: Point,
+  rect: Rect,
+): boolean {
 
-//   upper: FiveBarGeometry;
-
-//   lower: FiveBarGeometry;
-
-//   effector: Point;
-
-//   valid: boolean;
-// }
-
-
-// export class DoubleFiveBar {
-
-//   /*
-//    * ----------------------------------------------------------
-//    * EFFECTOR BOUNDARY
-//    * ----------------------------------------------------------
-//    *
-//    * This is the rectangle you already had around M/T.
-//    */
-
-//   readonly effectorBounds: Rect;
-
-
-//   /*
-//    * ----------------------------------------------------------
-//    * PASSIVE JOINT BOUNDARY
-//    * ----------------------------------------------------------
-//    *
-//    * Separate boundary for the two passive joints.
-//    *
-//    * Adjust this independently from the M/T rectangle.
-//    */
-
-//   readonly jointBounds: Rect;
-
-
-//   /*
-//    * ----------------------------------------------------------
-//    * UPPER 5-BAR
-//    * ----------------------------------------------------------
-//    */
-
-//   private readonly upperConfig:
-//     FiveBarConfig = {
-
-//     baseLeft: {
-//       x: 80,
-//       y: 80,
-//     },
-
-//     baseRight: {
-//       x: 520,
-//       y: 80,
-//     },
-
-//     upperArm: 420,
-
-//     lowerArm: 420,
-//   };
-
-
-//   /*
-//    * ----------------------------------------------------------
-//    * LOWER 5-BAR
-//    * ----------------------------------------------------------
-//    */
-
-//   private readonly lowerConfig:
-//     FiveBarConfig = {
-
-//     baseLeft: {
-//       x: 80,
-//       y: 820,
-//     },
-
-//     baseRight: {
-//       x: 520,
-//       y: 820,
-//     },
-
-//     upperArm: 420,
-
-//     lowerArm: 420,
-//   };
-
-
-//   constructor(
-//     effectorBounds: Rect,
-//     jointBounds: Rect,
-//   ) {
-
-//     this.effectorBounds =
-//       effectorBounds;
-
-//     this.jointBounds =
-//       jointBounds;
-//   }
-
-
-//   calculate(
-//     effector: Point,
-//   ): DoubleFiveBarGeometry {
-
-//     const upper =
-//       calculateFiveBar(
-
-//         this.upperConfig,
-
-//         effector,
-
-//         this.effectorBounds,
-
-//         this.jointBounds,
-//       );
-
-
-//     const lower =
-//       calculateFiveBar(
-
-//         this.lowerConfig,
-
-//         effector,
-
-//         this.effectorBounds,
-
-//         this.jointBounds,
-//       );
-
-
-//     return {
-
-//       upper,
-
-//       lower,
-
-//       effector,
-
-//       valid:
-//         upper.valid &&
-//         lower.valid,
-//     };
-//   }
-// }
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}

@@ -1,0 +1,36 @@
+{
+  "hash": "51511a6f",
+  "configHash": "5a9a310a",
+  "lockfileHash": "a947b993",
+  "browserHash": "ec9b1822",
+  "optimized": {
+    "@angular/common": {
+      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/common/fesm2022/common.mjs",
+      "file": "@angular_common.js",
+      "fileHash": "44d5f918",
+      "needsInterop": false
+    },
+    "@angular/core": {
+      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/core/fesm2022/core.mjs",
+      "file": "@angular_core.js",
+      "fileHash": "7f4a9f07",
+      "needsInterop": false
+    },
+    "@angular/platform-browser": {
+      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs",
+      "file": "@angular_platform-browser.js",
+      "fileHash": "4a89283a",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "common-D0sZeuiQ": {
+      "file": "common-D0sZeuiQ.js",
+      "isDynamicEntry": false
+    },
+    "core-TtonG8hB": {
+      "file": "core-TtonG8hB.js",
+      "isDynamicEntry": false
+    }
+  }
+}

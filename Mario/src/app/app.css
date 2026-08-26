@@ -9,8 +9,9 @@
 
 
 .app {
+  background-color: #111;
   min-height: 100vh;
-
+color: #eee;
   padding: 20px;
 
   font-family:
@@ -321,7 +322,7 @@ button:hover {
 
   border-radius: 8px;
 
-  background: #fafafa;
+  /* background: #fafafa; */
 
   flex-shrink: 0;
 }
@@ -518,4 +519,19 @@ kbd {
 
 .thwomp-bounds {
   stroke: #457b9d;
+}
+
+.joint-bounds {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+  pointer-events: none;
+}
+
+.mario-joint-bounds {
+  stroke: #00aaff;
+}
+
+.thwomp-joint-bounds {
+  stroke: #ff8800;
 }
