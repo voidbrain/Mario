@@ -99,34 +99,6 @@ export class GameEngine {
       this.thwompBounds,
     );
 
-
-  // readonly marioActuator =
-  //   new DoubleFiveBar(
-
-  //     this.marioBounds,
-
-  //     {
-  //       x: 20,
-  //       y: 100,
-  //       width: 560,
-  //       height: 700,
-  //     },
-  //   );
-
-
-  // readonly thwompActuator =
-  //   new DoubleFiveBar(
-
-  //     this.thwompBounds,
-
-  //     {
-  //       x: 20,
-  //       y: 100,
-  //       width: 560,
-  //       height: 700,
-  //     },
-  //   );
-
   marioMechanism:
     DoubleFiveBarGeometry;
 

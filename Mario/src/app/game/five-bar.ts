@@ -9,7 +9,8 @@ import {
 export function calculateFiveBar(
   config: FiveBarConfig,
   target: Point,
-  bounds: Rect,
+  effectorBounds?: Rect,
+  jointBounds?: Rect,
 ): FiveBarGeometry {
 
   const left =
@@ -33,19 +34,44 @@ export function calculateFiveBar(
 
 
   /*
-   * IMPORTANT:
-   *
-   * valid means that the mechanism can physically
-   * reach the effector.
-   *
-   * The rectangular envelope is NOT included here.
-   *
-   * The envelope is handled separately.
+   * Mechanism must be physically reachable.
    */
 
   const kinematicallyValid =
     left.valid &&
     right.valid;
+
+
+  /*
+   * Effector constraint.
+   */
+
+  const effectorValid =
+    effectorBounds === undefined ||
+    pointInsideRect(
+      target,
+      effectorBounds,
+    );
+
+
+  /*
+   * Passive-joint constraints.
+   */
+
+  const leftJointValid =
+    jointBounds === undefined ||
+    pointInsideRect(
+      left.point,
+      jointBounds,
+    );
+
+
+  const rightJointValid =
+    jointBounds === undefined ||
+    pointInsideRect(
+      right.point,
+      jointBounds,
+    );
 
 
   return {
@@ -66,8 +92,25 @@ export function calculateFiveBar(
       target,
 
     valid:
-      kinematicallyValid,
+      kinematicallyValid &&
+      effectorValid &&
+      leftJointValid &&
+      rightJointValid,
   };
+}
+
+
+function pointInsideRect(
+  point: Point,
+  rect: Rect,
+): boolean {
+
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
 }
 
 

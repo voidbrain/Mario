@@ -25,14 +25,34 @@ export interface DoubleFiveBarGeometry {
 export class DoubleFiveBar {
 
   /*
-   * Maximum freedom of movement for this
-   * complete double 5-bar.
-   *
-   * The rectangle is a constraint/envelope.
-   * It does NOT move the effector.
+   * Back-compat alias so views and callers that
+   * still look up the old single envelope property
+   * continue to work.
    */
 
   readonly bounds: Rect;
+
+
+  /*
+   * Maximum freedom of movement for this
+   * complete double 5-bar.
+   *
+   * The rectangle is a constraint/envelope
+   * for the effector. It does NOT move the
+   * effector.
+   */
+
+  readonly effectorBounds: Rect;
+
+
+  /*
+   * Boundary for the passive joints.
+   * Optional: if omitted we do not enforce an
+   * extra passive-joint rectangle, preserving
+   * the prior fluid mechanics behaviour.
+   */
+
+  readonly jointBounds?: Rect;
 
 
   /*
@@ -82,10 +102,18 @@ export class DoubleFiveBar {
 
 
   constructor(
-    bounds: Rect,
+    effectorBounds: Rect,
+    jointBounds?: Rect,
   ) {
 
-    this.bounds = bounds;
+    this.effectorBounds =
+      effectorBounds;
+
+    this.jointBounds =
+      jointBounds;
+
+    this.bounds =
+      effectorBounds;
   }
 
 
@@ -97,7 +125,8 @@ export class DoubleFiveBar {
       calculateFiveBar(
         this.upperConfig,
         effector,
-        this.bounds,
+        this.effectorBounds,
+        this.jointBounds,
       );
 
 
@@ -105,7 +134,8 @@ export class DoubleFiveBar {
       calculateFiveBar(
         this.lowerConfig,
         effector,
-        this.bounds,
+        this.effectorBounds,
+        this.jointBounds,
       );
 
 
