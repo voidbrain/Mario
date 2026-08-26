@@ -62,55 +62,40 @@
         preserveAspectRatio="xMidYMid meet"
       >
 
+      <!-- =============================== -->
+        <!-- GROUND                           -->
+        <!-- =============================== -->
+
+        <rect
+          x="0"
+          y="428"
+          width="600"
+          height="72"
+          class="ground"
+        />
+
         <!-- =============================== -->
         <!-- BACKGROUND                        -->
         <!-- =============================== -->
 
         <rect
-          x="0"
-          y="0"
-          width="600"
-          height="900"
-          class="background"
-        />
+            x="50"
+            y="50"
+            width="400"
+            height="400"
+            class="scene-bounds"
+          />
 
 
-        <rect
-          [attr.x]="engine.marioActuator.bounds.x"
-          [attr.y]="engine.marioActuator.bounds.y"
-          [attr.width]="engine.marioActuator.bounds.width"
-          [attr.height]="engine.marioActuator.bounds.height"
-          class="mechanism-bounds mario-bounds"
-        />
+          <!-- ORANGE = EXTERNAL JOINT SPACE -->
 
-
-        <!-- THWOMP MECHANICAL ENVELOPE -->
-
-        <rect
-          [attr.x]="engine.thwompActuator.bounds.x"
-          [attr.y]="engine.thwompActuator.bounds.y"
-          [attr.width]="engine.thwompActuator.bounds.width"
-          [attr.height]="engine.thwompActuator.bounds.height"
-          class="mechanism-bounds thwomp-bounds"
-        />
-
-        <!-- MARIO PASSIVE JOINT BOUNDARY -->
-<rect
-  [attr.x]="engine.marioActuator.jointBounds.x"
-  [attr.y]="engine.marioActuator.jointBounds.y"
-  [attr.width]="engine.marioActuator.jointBounds.width"
-  [attr.height]="engine.marioActuator.jointBounds.height"
-  class="joint-bounds mario-joint-bounds"
-/>
-
-<!-- THWOMP PASSIVE JOINT BOUNDARY -->
-<rect
-  [attr.x]="engine.thwompActuator.jointBounds.x"
-  [attr.y]="engine.thwompActuator.jointBounds.y"
-  [attr.width]="engine.thwompActuator.jointBounds.width"
-  [attr.height]="engine.thwompActuator.jointBounds.height"
-  class="joint-bounds thwomp-joint-bounds"
-/>
+          <rect
+            x="20"
+            y="20"
+            width="500"
+            height="500"
+            class="joint-bounds"
+          />
 
         <!-- =============================== -->
         <!-- MECHANISMS                        -->
@@ -470,17 +455,7 @@
         }
 
 
-        <!-- =============================== -->
-        <!-- GROUND                           -->
-        <!-- =============================== -->
 
-        <rect
-          x="0"
-          y="828"
-          width="600"
-          height="72"
-          class="ground"
-        />
 
 
         <!-- =============================== -->

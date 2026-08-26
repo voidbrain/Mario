@@ -94,48 +94,49 @@ export class App implements OnDestroy {
 
   private startLoop(): void {
 
-    if (
-      this.animationFrameId !== null
-    ) {
-      return;
-    }
+  if (
+    this.animationFrameId !== null
+  ) {
+    return;
+  }
 
 
-    this.lastTime =
-      performance.now();
+  this.lastTime =
+    performance.now();
 
 
-    const frame = (
-      time: number,
-    ): void => {
+  const frame = (
+    time: number,
+  ): void => {
 
-      const deltaTime =
-        Math.min(
-          (time - this.lastTime) / 1000,
-          0.05,
-        );
-
-
-      this.lastTime = time;
-
-
-      this.engine.update(
-        deltaTime,
-        this.input,
+    const deltaTime =
+      Math.min(
+        (time - this.lastTime) / 1000,
+        0.05,
       );
 
 
-      this.changeDetector.detectChanges();
+    this.lastTime =
+      time;
 
 
-      this.animationFrameId =
-        requestAnimationFrame(frame);
-    };
+    this.engine.update(
+      deltaTime,
+      this.input,
+    );
+
+
+    this.changeDetector.detectChanges();
 
 
     this.animationFrameId =
       requestAnimationFrame(frame);
-  }
+  };
+
+
+  this.animationFrameId =
+    requestAnimationFrame(frame);
+}
 
 
   private onKeyDown = (

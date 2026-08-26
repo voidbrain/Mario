@@ -501,37 +501,18 @@ kbd {
   }
 }
 
-.mechanism-bounds {
+.scene-bounds {
   fill: none;
-
+  stroke: #2563eb;
   stroke-width: 2;
-
   stroke-dasharray: 8 6;
-
   pointer-events: none;
-}
-
-
-.mario-bounds {
-  stroke: #e63946;
-}
-
-
-.thwomp-bounds {
-  stroke: #457b9d;
 }
 
 .joint-bounds {
   fill: none;
+  stroke: #f97316;
   stroke-width: 2;
   stroke-dasharray: 8 6;
   pointer-events: none;
-}
-
-.mario-joint-bounds {
-  stroke: #00aaff;
-}
-
-.thwomp-joint-bounds {
-  stroke: #ff8800;
 }

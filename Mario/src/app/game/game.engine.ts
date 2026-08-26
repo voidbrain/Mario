@@ -60,31 +60,31 @@ export class GameEngine {
    */
 
   readonly marioBounds: Rect = {
-    x: -10000,
-    y: -10000,
-    width: 20000,
-    height: 20000,
+    x: 0,
+    y: 0,
+    width: 600,
+    height: 500,
   };
 
   readonly marioJointBounds: Rect = {
-    x: -10000,
-    y: -10000,
-    width: 20000,
-    height: 20000,
+    x: -100,
+    y: -100,
+    width: 800,
+    height: 700,
   };
 
   readonly thwompBounds: Rect = {
-    x: -10000,
-    y: -10000,
-    width: 20000,
-    height: 20000,
+    x: 0,
+    y: 0,
+    width: 600,
+    height: 500,
   };
 
   readonly thwompJointBounds: Rect = {
-    x: -10000,
-    y: -10000,
-    width: 20000,
-    height: 20000,
+    x: -100,
+    y: -100,
+    width: 800,
+    height: 700,
   };
 
 
