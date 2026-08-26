@@ -137,6 +137,62 @@ button:hover {
    ========================================= */
 
 
+.mechanism-bounds {
+  fill: transparent;
+  stroke: #a16207;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.global-area {
+  fill: transparent;
+  stroke: #0f766e;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.frontend-area {
+  fill: transparent;
+  stroke: #1d4ed8;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.mario-joint-bounds {
+  fill: transparent;
+  stroke: #f59e0b;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.thwomp-joint-bounds {
+  fill: transparent;
+  stroke: #8b5cf6;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.mario-bounds {
+  fill: transparent;
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
+.thwomp-bounds {
+  fill: transparent;
+  stroke: #7c3aed;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+
 .background {
   fill: #dff2ff;
 }

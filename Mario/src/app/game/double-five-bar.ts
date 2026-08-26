@@ -52,7 +52,7 @@ export class DoubleFiveBar {
    * the prior fluid mechanics behaviour.
    */
 
-  readonly jointBounds?: Rect;
+  readonly jointBounds: Rect;
 
 
   /*
@@ -103,7 +103,7 @@ export class DoubleFiveBar {
 
   constructor(
     effectorBounds: Rect,
-    jointBounds?: Rect,
+    jointBounds: Rect = effectorBounds,
   ) {
 
     this.effectorBounds =

@@ -76,6 +76,42 @@
 
 
         <rect
+          [attr.x]="engine.globalArea.x"
+          [attr.y]="engine.globalArea.y"
+          [attr.width]="engine.globalArea.width"
+          [attr.height]="engine.globalArea.height"
+          class="mechanism-bounds global-area"
+        />
+
+
+        <rect
+          [attr.x]="engine.frontendArea.x"
+          [attr.y]="engine.frontendArea.y"
+          [attr.width]="engine.frontendArea.width"
+          [attr.height]="engine.frontendArea.height"
+          class="mechanism-bounds frontend-area"
+        />
+
+
+        <rect
+          [attr.x]="engine.marioActuator.jointBounds.x"
+          [attr.y]="engine.marioActuator.jointBounds.y"
+          [attr.width]="engine.marioActuator.jointBounds.width"
+          [attr.height]="engine.marioActuator.jointBounds.height"
+          class="mechanism-bounds mario-joint-bounds"
+        />
+
+
+        <rect
+          [attr.x]="engine.thwompActuator.jointBounds.x"
+          [attr.y]="engine.thwompActuator.jointBounds.y"
+          [attr.width]="engine.thwompActuator.jointBounds.width"
+          [attr.height]="engine.thwompActuator.jointBounds.height"
+          class="mechanism-bounds thwomp-joint-bounds"
+        />
+
+
+        <rect
           [attr.x]="engine.marioActuator.bounds.x"
           [attr.y]="engine.marioActuator.bounds.y"
           [attr.width]="engine.marioActuator.bounds.width"
@@ -93,38 +129,6 @@
           [attr.height]="engine.thwompActuator.bounds.height"
           class="mechanism-bounds thwomp-bounds"
         />
-
-        <!-- <rect
-          [attr.x]="engine.marioActuator.effectorBounds.x"
-          [attr.y]="engine.marioActuator.effectorBounds.y"
-          [attr.width]="engine.marioActuator.effectorBounds.width"
-          [attr.height]="engine.marioActuator.effectorBounds.height"
-          class="effector-bounds"
-        />
-
-        <rect
-          [attr.x]="engine.marioActuator.jointBounds.x"
-          [attr.y]="engine.marioActuator.jointBounds.y"
-          [attr.width]="engine.marioActuator.jointBounds.width"
-          [attr.height]="engine.marioActuator.jointBounds.height"
-          class="joint-bounds"
-        />
-
-        <rect
-          [attr.x]="engine.thwompActuator.effectorBounds.x"
-          [attr.y]="engine.thwompActuator.effectorBounds.y"
-          [attr.width]="engine.thwompActuator.effectorBounds.width"
-          [attr.height]="engine.thwompActuator.effectorBounds.height"
-          class="effector-bounds"
-        />
-
-        <rect
-          [attr.x]="engine.thwompActuator.jointBounds.x"
-          [attr.y]="engine.thwompActuator.jointBounds.y"
-          [attr.width]="engine.thwompActuator.jointBounds.width"
-          [attr.height]="engine.thwompActuator.jointBounds.height"
-          class="joint-bounds"
-        /> -->
 
         <!-- =============================== -->
         <!-- MECHANISMS                        -->

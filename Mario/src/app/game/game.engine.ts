@@ -58,7 +58,19 @@ export class GameEngine {
    * each complete actuator.
    */
 
-  readonly marioBounds: Rect = {
+  readonly globalArea: Rect = {
+
+    x: 0,
+
+    y: 0,
+
+    width: 600,
+
+    height: 900,
+  };
+
+
+  readonly frontendArea: Rect = {
 
     x: 20,
 
@@ -70,7 +82,43 @@ export class GameEngine {
   };
 
 
+  readonly marioBounds: Rect = {
+
+    x: 20,
+
+    y: 100,
+
+    width: 560,
+
+    height: 700,
+  };
+
+
   readonly thwompBounds: Rect = {
+
+    x: 20,
+
+    y: 100,
+
+    width: 560,
+
+    height: 700,
+  };
+
+
+  readonly marioJointBounds: Rect = {
+
+    x: 20,
+
+    y: 20,
+
+    width: 560,
+
+    height: 820,
+  };
+
+
+  readonly thwompJointBounds: Rect = {
 
     x: 20,
 
@@ -91,12 +139,14 @@ export class GameEngine {
   readonly marioActuator =
     new DoubleFiveBar(
       this.marioBounds,
+      this.marioJointBounds,
     );
 
 
   readonly thwompActuator =
     new DoubleFiveBar(
       this.thwompBounds,
+      this.thwompJointBounds,
     );
 
   marioMechanism:
