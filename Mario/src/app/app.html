@@ -82,6 +82,16 @@
           class="ground"
         />
 
+      @for (obstacle of engine.obstacles; track $index) {
+        <rect
+          [attr.x]="obstacle.x"
+          [attr.y]="obstacle.y"
+          [attr.width]="obstacle.width"
+          [attr.height]="obstacle.height"
+          rx="4"
+          class="obstacle"
+        />
+      }
 
         <rect
           [attr.x]="sceneBounds.x"

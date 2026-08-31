@@ -501,6 +501,12 @@ kbd {
   }
 }
 
+.obstacle {
+  fill: #555;
+  stroke: #222;
+  stroke-width: 3;
+}
+
 .scene-bounds {
   fill: none;
   stroke: #2563eb;
