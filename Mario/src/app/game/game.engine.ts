@@ -3,37 +3,32 @@ import {
   GameState,
   InputState,
   Rect,
+  FiveBarGeometry,
 } from './types';
 
 import {
-  DoubleFiveBar,
-  DoubleFiveBarGeometry,
-} from './double-five-bar';
+  FiveBarActuator,
+} from './five-bar-actuator';
 
 
 export class GameEngine {
 
   readonly state: GameState = {
 
-    width: 800,
+    width: 520,
 
-    height: 500,
+    height: 600,
 
     status: 'ready',
 
-    /*
-     * Mario starts at a mechanically valid position.
-     *
-     * y is the TOP of Mario.
-     */
-
     mario: {
       id: 'mario',
-      x: 300,
+      x: 0,
       y: 372,
       width: 34,
       height: 48,
     },
+
     thwomp: {
       id: 'thwomp',
       x: 390,
@@ -46,74 +41,138 @@ export class GameEngine {
 
   /*
    * ============================================================
-   * MARIO EFFECTOR BOUNDS
+   * BOUNDS
    * ============================================================
-   *
-   * These are bounds for Mario's CENTER POINT, because the
-   * actuator receives Mario's center.
-   *
-   * X:
-   *   20 ... 780
-   *
-   * Y:
-   *   20 ... 480
    */
 
-  readonly marioBounds: Rect = {
+  readonly characterBounds: Rect = {
     x: 0,
     y: 0,
-    width: 600,
-    height: 500,
+    width: 800,
+    height: 600,
   };
+
+
+  readonly jointBounds: Rect = {
+    x: -150,
+    y: -200,
+    width: 1100,
+    height: 950,
+  };
+
+
+  readonly marioBounds: Rect = {
+    ...this.characterBounds,
+  };
+
 
   readonly marioJointBounds: Rect = {
-    x: -100,
-    y: -100,
-    width: 800,
-    height: 700,
+    ...this.jointBounds,
   };
+
 
   readonly thwompBounds: Rect = {
-    x: 0,
-    y: 0,
-    width: 600,
-    height: 500,
+    ...this.characterBounds,
   };
 
+
   readonly thwompJointBounds: Rect = {
-    x: -100,
-    y: -100,
-    width: 800,
-    height: 700,
+    ...this.jointBounds,
   };
 
 
   /*
    * ============================================================
-   * ACTUATORS
+   * MARIO 5-BAR
    * ============================================================
+   *
+   * One 5-bar:
+   *
+   *        left base                 right base
+   *            ●-------------------------●
+   *             \                       /
+   *              ●                     ●
+   *                \                 /
+   *                     M
+   *
+   * 2 main joints
+   * 2 passive joints
+   * 1 effector
+   *
+   * These dimensions were checked against Mario's complete
+   * movement range, including the jump.
    */
 
   readonly marioActuator =
-    new DoubleFiveBar(
+    new FiveBarActuator(
+
       this.marioBounds,
+
       this.marioJointBounds,
+
+      {
+        upperArm: 220,
+        lowerArm: 220,
+
+        baseLeft: {
+          x: 90,
+          y: 300,
+        },
+
+        baseRight: {
+          x: 450,
+          y: 300,
+        },
+      },
     );
 
 
+  /*
+   * ============================================================
+   * THWOMP 5-BAR
+   * ============================================================
+   *
+   * One independent 5-bar.
+   *
+   * T can move vertically without requiring a second linkage.
+   */
+
   readonly thwompActuator =
-    new DoubleFiveBar(
+    new FiveBarActuator(
+
       this.thwompBounds,
+
       this.thwompJointBounds,
+
+      {
+
+        upperArm:
+          190,
+
+        lowerArm:
+          190,
+
+
+        baseLeft: {
+          x: 80,
+          y: 300,
+        },
+
+
+        baseRight: {
+          x: 360,
+          y: 300,
+        },
+      },
     );
 
 
   marioMechanism:
-    DoubleFiveBarGeometry;
+    FiveBarGeometry;
 
 
   thwompMechanism:
-    DoubleFiveBarGeometry;
+    FiveBarGeometry;
 
 
   /*
@@ -125,19 +184,6 @@ export class GameEngine {
   private readonly moveSpeed =
     220;
 
-
-  /*
-   * Mario's Y is the TOP of the character.
-   *
-   * 500 - 48 = 452
-   *
-   * But the mechanism cannot reach that center position with
-   * the current 80/420 base arrangement.
-   *
-   * Therefore keep Mario's feet at 420:
-   *
-   * 420 - 48 = 372
-   */
 
   private readonly groundY =
     372;
@@ -166,7 +212,7 @@ export class GameEngine {
 
 
   private readonly thwompBottom =
-    340;
+    360;
 
 
   private readonly thwompSpeed =
@@ -177,12 +223,17 @@ export class GameEngine {
     1;
 
 
-  constructor() {
+  thwompAutoplay =
+    true;
 
-    /*
-     * Ensure initial positions are exactly the positions
-     * represented by the state.
-     */
+
+  /*
+   * ============================================================
+   * CONSTRUCTOR
+   * ============================================================
+   */
+
+  constructor() {
 
     this.state.mario.y =
       this.groundY;
@@ -196,6 +247,12 @@ export class GameEngine {
       this.calculateThwompMechanism();
   }
 
+
+  /*
+   * ============================================================
+   * GAME CONTROL
+   * ============================================================
+   */
 
   start(): void {
 
@@ -220,7 +277,7 @@ export class GameEngine {
 
 
     this.state.mario.x =
-      300;
+      10;
 
 
     this.state.mario.y =
@@ -247,14 +304,16 @@ export class GameEngine {
   }
 
 
+  /*
+   * ============================================================
+   * UPDATE
+   * ============================================================
+   */
+
   update(
     deltaTime: number,
     input: InputState,
   ): void {
-
-    /*
-     * Prevent a bad frame from destroying the mechanism.
-     */
 
     const dt =
       Math.max(
@@ -310,6 +369,12 @@ export class GameEngine {
 
   private updateActuators(): void {
 
+    this.recalculateMechanisms();
+  }
+
+
+  private recalculateMechanisms(): void {
+
     this.marioMechanism =
       this.calculateMarioMechanism();
 
@@ -320,7 +385,7 @@ export class GameEngine {
 
 
   private calculateMarioMechanism():
-    DoubleFiveBarGeometry {
+    FiveBarGeometry {
 
     return this.marioActuator.calculate({
 
@@ -336,7 +401,7 @@ export class GameEngine {
 
 
   private calculateThwompMechanism():
-    DoubleFiveBarGeometry {
+    FiveBarGeometry {
 
     return this.thwompActuator.calculate({
 
@@ -348,6 +413,72 @@ export class GameEngine {
         this.state.thwomp.y +
         this.state.thwomp.height / 2,
     });
+  }
+
+
+  /*
+   * ============================================================
+   * THWOMP MANUAL POSITION
+   * ============================================================
+   */
+
+  setThwompCenter(
+    centerX: number,
+    centerY: number,
+  ): void {
+
+    if (
+      this.thwompAutoplay
+    ) {
+
+      return;
+    }
+
+
+    this.state.thwomp.x =
+      centerX -
+      this.state.thwomp.width / 2;
+
+
+    this.state.thwomp.y =
+      centerY -
+      this.state.thwomp.height / 2;
+
+
+    /*
+     * Keep T itself inside the actuator bounds.
+     */
+
+    this.state.thwomp.x =
+      Math.max(
+        this.thwompBounds.x,
+
+        Math.min(
+          this.thwompBounds.x +
+            this.thwompBounds.width -
+            this.state.thwomp.width,
+
+          this.state.thwomp.x,
+        ),
+      );
+
+
+    this.state.thwomp.y =
+      Math.max(
+        this.thwompBounds.y,
+
+        Math.min(
+          this.thwompBounds.y +
+            this.thwompBounds.height -
+            this.state.thwomp.height,
+
+          this.state.thwomp.y,
+        ),
+      );
+
+
+    this.thwompMechanism =
+      this.calculateThwompMechanism();
   }
 
 
@@ -397,16 +528,14 @@ export class GameEngine {
         deltaTime;
 
 
-      /*
-       * Keep the character itself inside the game.
-       */
-
       this.state.mario.x =
         Math.max(
           0,
+
           Math.min(
             this.state.width -
               this.state.mario.width,
+
             newX,
           ),
         );
@@ -416,14 +545,12 @@ export class GameEngine {
         this.calculateMarioMechanism();
 
 
-      /*
-       * Do NOT accept a position that breaks the
-       * double five-bar.
-       */
+      if (
+        !mechanism.valid
+      ) {
 
-      if (!mechanism.valid) {
-
-        this.state.mario.x =oldX;
+        this.state.mario.x =
+          oldX;
       }
     }
 
@@ -487,9 +614,12 @@ export class GameEngine {
         this.calculateMarioMechanism();
 
 
-      if (!mechanism.valid) {
+      if (
+        !mechanism.valid
+      ) {
 
-        this.state.mario.y = oldY;
+        this.state.mario.y =
+          oldY;
       }
 
 
@@ -521,6 +651,14 @@ export class GameEngine {
   private updateThwomp(
     deltaTime: number,
   ): void {
+
+    if (
+      !this.thwompAutoplay
+    ) {
+
+      return;
+    }
+
 
     const oldY =
       this.state.thwomp.y;
@@ -572,17 +710,16 @@ export class GameEngine {
       this.calculateThwompMechanism();
 
 
-    /*
-     * If the new position makes ANY passive joint invalid,
-     * restore the old position and reverse direction.
-     */
+    if (
+      !mechanism.valid
+    ) {
 
-    if (!mechanism.valid) {
-
-      this.state.thwomp.y = oldY;
+      this.state.thwomp.y =
+        oldY;
 
 
-      this.thwompDirection *= -1;
+      this.thwompDirection *=
+        -1;
     }
   }
 

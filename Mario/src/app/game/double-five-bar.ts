@@ -22,64 +22,35 @@ export interface DoubleFiveBarGeometry {
 }
 
 
+export interface DoubleFiveBarParams {
+
+  upperArm: number;
+
+  lowerArm: number;
+
+  upperBaseLeft: Point;
+
+  upperBaseRight: Point;
+
+  lowerBaseLeft: Point;
+
+  lowerBaseRight: Point;
+}
+
+
 export class DoubleFiveBar {
 
   readonly bounds: Rect;
 
   readonly jointBounds: Rect;
 
-
-  /*
-   * ============================================================
-   * UPPER FIVE-BAR
-   * ============================================================
-   */
-
-  readonly upperConfig: FiveBarConfig = {
-
-    baseLeft: {
-      x: 80,
-      y: 80,
-    },
-
-    baseRight: {
-      x: 520,
-      y: 80,
-    },
-
-    upperArm: 220,
-
-    lowerArm: 220,
-  };
-
-
-  /*
-   * ============================================================
-   * LOWER FIVE-BAR
-   * ============================================================
-   */
-
-  readonly lowerConfig: FiveBarConfig = {
-
-    baseLeft: {
-      x: 80,
-      y: 420,
-    },
-
-    baseRight: {
-      x: 520,
-      y: 420,
-    },
-
-    upperArm: 220,
-
-    lowerArm: 220,
-  };
+  readonly params: DoubleFiveBarParams;
 
 
   constructor(
     bounds: Rect,
     jointBounds: Rect,
+    params?: Partial<DoubleFiveBarParams>,
   ) {
 
     this.bounds =
@@ -87,6 +58,60 @@ export class DoubleFiveBar {
 
     this.jointBounds =
       jointBounds;
+
+
+    this.params = {
+
+      upperArm:
+        params?.upperArm ??
+        220,
+
+      lowerArm:
+        params?.lowerArm ??
+        220,
+
+      upperBaseLeft:
+        params?.upperBaseLeft ??
+        {
+          x: bounds.x + 40,
+          y: bounds.y,
+        },
+
+      upperBaseRight:
+        params?.upperBaseRight ??
+        {
+          x:
+            bounds.x +
+            bounds.width -
+            40,
+
+          y:
+            bounds.y,
+        },
+
+      lowerBaseLeft:
+        params?.lowerBaseLeft ??
+        {
+          x: bounds.x + 40,
+
+          y:
+            bounds.y +
+            bounds.height,
+        },
+
+      lowerBaseRight:
+        params?.lowerBaseRight ??
+        {
+          x:
+            bounds.x +
+            bounds.width -
+            40,
+
+          y:
+            bounds.y +
+            bounds.height,
+        },
+    };
   }
 
 
@@ -94,16 +119,43 @@ export class DoubleFiveBar {
     effector: Point,
   ): DoubleFiveBarGeometry {
 
-    const effectorInside =
-      pointInsideRect(
-        effector,
-        this.bounds,
-      );
+    const upperConfig:
+      FiveBarConfig = {
+
+      baseLeft:
+        this.params.upperBaseLeft,
+
+      baseRight:
+        this.params.upperBaseRight,
+
+      upperArm:
+        this.params.upperArm,
+
+      lowerArm:
+        this.params.lowerArm,
+    };
+
+
+    const lowerConfig:
+      FiveBarConfig = {
+
+      baseLeft:
+        this.params.lowerBaseLeft,
+
+      baseRight:
+        this.params.lowerBaseRight,
+
+      upperArm:
+        this.params.upperArm,
+
+      lowerArm:
+        this.params.lowerArm,
+    };
 
 
     const upper =
       calculateFiveBar(
-        this.upperConfig,
+        upperConfig,
         effector,
         this.jointBounds,
         false,
@@ -112,7 +164,7 @@ export class DoubleFiveBar {
 
     const lower =
       calculateFiveBar(
-        this.lowerConfig,
+        lowerConfig,
         effector,
         this.jointBounds,
         true,
@@ -128,7 +180,10 @@ export class DoubleFiveBar {
       effector,
 
       valid:
-        effectorInside &&
+        pointInsideRect(
+          effector,
+          this.bounds,
+        ) &&
         upper.valid &&
         lower.valid,
     };
@@ -142,9 +197,17 @@ function pointInsideRect(
 ): boolean {
 
   return (
+
     point.x >= rect.x &&
-    point.x <= rect.x + rect.width &&
+
+    point.x <=
+      rect.x +
+      rect.width &&
+
     point.y >= rect.y &&
-    point.y <= rect.y + rect.height
+
+    point.y <=
+      rect.y +
+      rect.height
   );
 }

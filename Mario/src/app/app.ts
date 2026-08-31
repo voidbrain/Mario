@@ -4,7 +4,9 @@ import {
   OnDestroy,
 } from '@angular/core';
 
-import { CommonModule } from '@angular/common';
+import {
+  CommonModule,
+} from '@angular/common';
 
 import {
   GameEngine,
@@ -12,7 +14,13 @@ import {
 
 import {
   InputState,
+  Rect,
+  Point,
 } from './game/types';
+
+import {
+  FiveBarActuator,
+} from './game/five-bar-actuator';
 
 
 @Component({
@@ -34,13 +42,69 @@ export class App implements OnDestroy {
     new GameEngine();
 
 
-  showMechanisms = true;
+  showMechanisms =
+    true;
 
+
+  /*
+   * ============================================================
+   * DEBUG RECTANGLES
+   * ============================================================
+   */
+
+  readonly sceneBounds: Rect = {
+
+    x: 50,
+
+    y: 50,
+
+    width: 400,
+
+    height: 400,
+  };
+
+
+  readonly jointBounds: Rect =
+    this.engine.thwompJointBounds;
+
+
+  /*
+   * ============================================================
+   * BASE DRAGGING
+   * ============================================================
+   */
+
+  private draggingBase:
+    Point | null = null;
+
+  private draggingBaseElement:
+    Element | null = null;
+
+
+  /*
+   * ============================================================
+   * THWOMP DRAGGING
+   * ============================================================
+   */
+
+  private draggingThwomp =
+    false;
+
+  private draggingThwompElement:
+    Element | null = null;
+
+
+  /*
+   * ============================================================
+   * GAME LOOP
+   * ============================================================
+   */
 
   private animationFrameId:
     number | null = null;
 
-  private lastTime = 0;
+  private lastTime =
+    0;
 
 
   private input: InputState = {
@@ -68,10 +132,15 @@ export class App implements OnDestroy {
       this.onKeyUp,
     );
 
-
     this.startLoop();
   }
 
+
+  /*
+   * ============================================================
+   * BUTTONS
+   * ============================================================
+   */
 
   start(): void {
 
@@ -85,6 +154,59 @@ export class App implements OnDestroy {
   }
 
 
+  /*
+   * ============================================================
+   * DEBUG CONTROLS
+   * ============================================================
+   */
+
+  updateRect(
+    rect: Rect,
+    property: keyof Rect,
+    event: Event,
+  ): void {
+
+    const input =
+      event.target as HTMLInputElement;
+
+    const value =
+      Number(input.value);
+
+    if (
+      Number.isFinite(value)
+    ) {
+
+      rect[property] =
+        value;
+    }
+  }
+
+
+  updateArmLength(
+    actuator: FiveBarActuator,
+    property:
+      'upperArm'
+      | 'lowerArm',
+    event: Event,
+  ): void {
+
+    const input =
+      event.target as HTMLInputElement;
+
+    const value =
+      Number(input.value);
+
+    if (
+      Number.isFinite(value) &&
+      value > 0
+    ) {
+
+      actuator.params[property] =
+        value;
+    }
+  }
+
+
   toggleMechanisms(): void {
 
     this.showMechanisms =
@@ -92,52 +214,339 @@ export class App implements OnDestroy {
   }
 
 
-  private startLoop(): void {
+  toggleThwompAutoplay(): void {
 
-  if (
-    this.animationFrameId !== null
-  ) {
-    return;
+    this.engine.thwompAutoplay =
+      !this.engine.thwompAutoplay;
   }
 
 
-  this.lastTime =
-    performance.now();
+  /*
+   * ============================================================
+   * BASE MOTOR DRAG
+   * ============================================================
+   */
+
+  onBasePointerDown(
+    event: PointerEvent,
+    point: Point,
+  ): void {
+
+    event.preventDefault();
+
+    event.stopPropagation();
 
 
-  const frame = (
-    time: number,
-  ): void => {
+    this.draggingBase =
+      point;
 
-    const deltaTime =
-      Math.min(
-        (time - this.lastTime) / 1000,
-        0.05,
+    this.draggingBaseElement =
+      event.currentTarget as Element;
+
+
+    this.draggingBaseElement.setPointerCapture(
+      event.pointerId,
+    );
+  }
+
+
+  onBasePointerMove(
+    event: PointerEvent,
+  ): void {
+
+    if (
+      this.draggingBase === null
+    ) {
+
+      return;
+    }
+
+
+    const element =
+      event.currentTarget as SVGGraphicsElement;
+
+    const svg =
+      element.ownerSVGElement;
+
+    if (!svg) {
+
+      return;
+    }
+
+
+    const point =
+      this.svgPoint(
+        svg,
+        event.clientX,
+        event.clientY,
       );
 
 
-    this.lastTime =
-      time;
+    this.draggingBase.x =
+      point.x;
+
+    this.draggingBase.y =
+      point.y;
+  }
 
 
-    this.engine.update(
-      deltaTime,
-      this.input,
+  onBasePointerUp(
+    event: PointerEvent,
+  ): void {
+
+    const element =
+      this.draggingBaseElement;
+
+
+    if (
+      element !== null &&
+      element.hasPointerCapture(
+        event.pointerId,
+      )
+    ) {
+
+      element.releasePointerCapture(
+        event.pointerId,
+      );
+    }
+
+
+    this.draggingBase =
+      null;
+
+    this.draggingBaseElement =
+      null;
+  }
+
+
+  /*
+   * ============================================================
+   * THWOMP DRAG
+   * ============================================================
+   */
+
+  onThwompPointerDown(
+    event: PointerEvent,
+  ): void {
+
+    if (
+      this.engine.thwompAutoplay
+    ) {
+
+      return;
+    }
+
+
+    event.preventDefault();
+
+    event.stopPropagation();
+
+
+    this.draggingThwomp =
+      true;
+
+    this.draggingThwompElement =
+      event.currentTarget as Element;
+
+
+    this.draggingThwompElement.setPointerCapture(
+      event.pointerId,
     );
+  }
 
 
-    this.changeDetector.detectChanges();
+  onThwompPointerMove(
+    event: PointerEvent,
+  ): void {
+
+    if (
+      !this.draggingThwomp ||
+      this.engine.thwompAutoplay
+    ) {
+
+      return;
+    }
+
+
+    const element =
+      event.currentTarget as SVGGraphicsElement;
+
+    const svg =
+      element.ownerSVGElement;
+
+    if (!svg) {
+
+      return;
+    }
+
+
+    const point =
+      this.svgPoint(
+        svg,
+        event.clientX,
+        event.clientY,
+      );
+
+
+    this.engine.setThwompCenter(
+      point.x,
+      point.y,
+    );
+  }
+
+
+  onThwompPointerUp(
+    event: PointerEvent,
+  ): void {
+
+    this.draggingThwomp =
+      false;
+
+
+    const element =
+      this.draggingThwompElement;
+
+
+    if (
+      element !== null &&
+      element.hasPointerCapture(
+        event.pointerId,
+      )
+    ) {
+
+      element.releasePointerCapture(
+        event.pointerId,
+      );
+    }
+
+
+    this.draggingThwompElement =
+      null;
+  }
+
+
+  /*
+   * ============================================================
+   * SVG COORDINATES
+   * ============================================================
+   */
+
+  private svgPoint(
+    svg: SVGSVGElement,
+    clientX: number,
+    clientY: number,
+  ): Point {
+
+    const point =
+      svg.createSVGPoint();
+
+
+    point.x =
+      clientX;
+
+    point.y =
+      clientY;
+
+
+    const ctm =
+      svg.getScreenCTM();
+
+
+    if (!ctm) {
+
+      return {
+
+        x: 0,
+
+        y: 0,
+      };
+    }
+
+
+    const transformed =
+      point.matrixTransform(
+        ctm.inverse(),
+      );
+
+
+    return {
+
+      x:
+        transformed.x,
+
+      y:
+        transformed.y,
+    };
+  }
+
+
+  /*
+   * ============================================================
+   * GAME LOOP
+   * ============================================================
+   */
+
+  private startLoop(): void {
+
+    if (
+      this.animationFrameId !== null
+    ) {
+
+      return;
+    }
+
+
+    this.lastTime =
+      performance.now();
+
+
+    const frame = (
+      time: number,
+    ): void => {
+
+      const deltaTime =
+        Math.min(
+          (
+            time -
+            this.lastTime
+          ) / 1000,
+
+          0.05,
+        );
+
+
+      this.lastTime =
+        time;
+
+
+      this.engine.update(
+        deltaTime,
+        this.input,
+      );
+
+
+      this.changeDetector.detectChanges();
+
+
+      this.animationFrameId =
+        requestAnimationFrame(
+          frame,
+        );
+    };
 
 
     this.animationFrameId =
-      requestAnimationFrame(frame);
-  };
+      requestAnimationFrame(
+        frame,
+      );
+  }
 
 
-  this.animationFrameId =
-    requestAnimationFrame(frame);
-}
-
+  /*
+   * ============================================================
+   * KEYBOARD
+   * ============================================================
+   */
 
   private onKeyDown = (
     event: KeyboardEvent,
@@ -148,7 +557,8 @@ export class App implements OnDestroy {
       case 'ArrowLeft':
       case 'KeyA':
 
-        this.input.left = true;
+        this.input.left =
+          true;
 
         event.preventDefault();
 
@@ -158,7 +568,8 @@ export class App implements OnDestroy {
       case 'ArrowRight':
       case 'KeyD':
 
-        this.input.right = true;
+        this.input.right =
+          true;
 
         event.preventDefault();
 
@@ -167,10 +578,12 @@ export class App implements OnDestroy {
 
       case 'Space':
 
-        if (!event.repeat) {
+        if (
+          !event.repeat
+        ) {
 
-          this.input.jumpPressed = true;
-
+          this.input.jumpPressed =
+            true;
         }
 
         event.preventDefault();
@@ -198,7 +611,8 @@ export class App implements OnDestroy {
       case 'ArrowLeft':
       case 'KeyA':
 
-        this.input.left = false;
+        this.input.left =
+          false;
 
         event.preventDefault();
 
@@ -208,7 +622,8 @@ export class App implements OnDestroy {
       case 'ArrowRight':
       case 'KeyD':
 
-        this.input.right = false;
+        this.input.right =
+          false;
 
         event.preventDefault();
 
@@ -217,7 +632,8 @@ export class App implements OnDestroy {
 
       case 'Space':
 
-        this.input.jumpPressed = false;
+        this.input.jumpPressed =
+          false;
 
         event.preventDefault();
 
@@ -225,6 +641,12 @@ export class App implements OnDestroy {
     }
   };
 
+
+  /*
+   * ============================================================
+   * CLEANUP
+   * ============================================================
+   */
 
   ngOnDestroy(): void {
 
@@ -236,7 +658,8 @@ export class App implements OnDestroy {
         this.animationFrameId,
       );
 
-      this.animationFrameId = null;
+      this.animationFrameId =
+        null;
     }
 
 

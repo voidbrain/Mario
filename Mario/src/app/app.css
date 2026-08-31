@@ -516,3 +516,17 @@ kbd {
   stroke-dasharray: 8 6;
   pointer-events: none;
 }
+
+.game {
+  touch-action: none;
+  user-select: none;
+}
+
+.motor {
+  pointer-events: all;
+  cursor: grab;
+}
+
+.motor:active {
+  cursor: grabbing;
+}
