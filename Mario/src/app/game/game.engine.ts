@@ -10,6 +10,8 @@ import {
   FiveBarActuator,
 } from './five-bar-actuator';
 
+import { SimBridge } from '../sim/sim-bridge.service';
+
 
 export class GameEngine {
 
@@ -317,6 +319,9 @@ export class GameEngine {
 
   thwompMechanism: FiveBarGeometry;
 
+  // SimBridge for authoritative physics (worker)
+  private simBridge: SimBridge | null = null;
+
 
   /*
    * ============================================================
@@ -444,6 +449,80 @@ export class GameEngine {
 
     this.state.status = 'playing';
 
+    // initialize / connect to sim worker and create five-bar mechanisms
+    try {
+      if (!this.simBridge) this.simBridge = new SimBridge();
+      // start worker with pixel->meter scaling (100 px = 1 m)
+      this.simBridge.start({ scale: 100, timeStep: 1 / 120, publishHz: 60, ambientTemp: 25, timeoutMs: 3000 })
+        .then(() => {
+          if (!this.simBridge) return;
+          // register state handler
+          this.simBridge.onState((msg: any) => {
+            if (!msg || !msg.bodies) return;
+            const marioBody = msg.bodies['mario-payload'] || msg.bodies['mario-payload'];
+            const thwompBody = msg.bodies['thwomp-payload'] || msg.bodies['thwomp-payload'];
+            if (marioBody) {
+              this.state.mario.x = Math.max(0, Math.min(this.state.width - this.state.mario.width, marioBody.x * 100 - this.state.mario.width / 2));
+              this.state.mario.y = Math.max(0, Math.min(this.state.height - this.state.mario.height, marioBody.y * 100 - this.state.mario.height / 2));
+            }
+            if (thwompBody) {
+              this.state.thwomp.x = Math.max(0, Math.min(this.state.width - this.state.thwomp.width, thwompBody.x * 100 - this.state.thwomp.width / 2));
+              this.state.thwomp.y = Math.max(0, Math.min(this.state.height - this.state.thwomp.height, thwompBody.y * 100 - this.state.thwomp.height / 2));
+            }
+
+            // update motor temps if available
+            if (msg.motors) {
+              const left = msg.motors['mario-baseLeftJoint'] || msg.motors['mario-baseLeftJoint'];
+              const right = msg.motors['mario-baseRightJoint'] || msg.motors['mario-baseRightJoint'];
+              if (left && typeof left.temp === 'number') this.motorTempLeft = left.temp;
+              if (right && typeof right.temp === 'number') this.motorTempRight = right.temp;
+            }
+          });
+
+          // Create five-bar for Mario and Thwomp using actuator params (convert px to meters)
+          const scale = 100; // px -> m
+          const mBaseLeft = this.marioActuator.params.baseLeft;
+          const mBaseRight = this.marioActuator.params.baseRight;
+          const mEff = { x: (this.state.mario.x + this.state.mario.width / 2) / scale, y: (this.state.mario.y + this.state.mario.height / 2) / scale };
+          this.simBridge.createFiveBar('mario', {
+            baseLeft: { x: mBaseLeft.x / scale, y: mBaseLeft.y / scale },
+            baseRight: { x: mBaseRight.x / scale, y: mBaseRight.y / scale },
+            effector: mEff,
+            upperArm: this.marioActuator.params.upperArm / scale,
+            lowerArm: this.marioActuator.params.lowerArm / scale,
+            payloadSize: { w: this.state.mario.width / scale, h: this.state.mario.height / scale },
+            motor: { maxTorque: this.motorTorqueCapacity, initTemp: this.motorTempLeft, kP: 80, kD: 2 },
+          });
+
+          const tBaseLeft = this.thwompActuator.params.baseLeft;
+          const tBaseRight = this.thwompActuator.params.baseRight;
+          const tEff = { x: (this.state.thwomp.x + this.state.thwomp.width / 2) / scale, y: (this.state.thwomp.y + this.state.thwomp.height / 2) / scale };
+          this.simBridge.createFiveBar('thwomp', {
+            baseLeft: { x: tBaseLeft.x / scale, y: tBaseLeft.y / scale },
+            baseRight: { x: tBaseRight.x / scale, y: tBaseRight.y / scale },
+            effector: tEff,
+            upperArm: this.thwompActuator.params.upperArm / scale,
+            lowerArm: this.thwompActuator.params.lowerArm / scale,
+            payloadSize: { w: this.state.thwomp.width / scale, h: this.state.thwomp.height / scale },
+            motor: { maxTorque: this.motorTorqueCapacity, initTemp: this.motorTempRight, kP: 80, kD: 2 },
+          });
+
+          // start worker loop
+          this.simBridge.post({ type: 'start' });
+        })
+        .catch((err) => {
+          // if sim fails to init, fall back to main-thread kinematics
+          // eslint-disable-next-line no-console
+          console.warn('SimBridge failed to initialize:', err);
+          this.simBridge = null;
+        });
+    } catch (e) {
+      // If worker fails to start, continue with main-thread kinematics
+      // eslint-disable-next-line no-console
+      console.warn('SimBridge start failed, continuing without worker', e);
+      this.simBridge = null;
+    }
+
   }
 
 
@@ -510,7 +589,9 @@ export class GameEngine {
     * explicitly presses Start.
     */
     if (this.state.status === 'playing') {
-     this.updateThwomp(dt);
+      if (!this.simBridge || !this.simBridge.isRunning()) {
+        this.updateThwomp(dt);
+      }
     }
 
 
@@ -525,10 +606,67 @@ export class GameEngine {
     }
 
 
-    this.updateMario(
-      dt,
-      input,
-    );
+    // If the sim worker is authoritative, send input commands to it and
+    // rely on worker state updates to drive Mario/Thwomp positions.
+    if (this.simBridge && this.simBridge.isRunning()) {
+
+      let vx = 0;
+      if (input.left) vx -= this.moveSpeed;
+      if (input.right) vx += this.moveSpeed;
+
+      // convert pixels to meters (scale matches sim bridge start)
+      const scale = 100;
+
+      // get last authoritative state from worker if available
+      const last = this.simBridge.getLastState && this.simBridge.getLastState();
+      let effXm: number, effYm: number;
+      if (last && last.bodies && last.bodies['mario-payload']) {
+        effXm = last.bodies['mario-payload'].x;
+        effYm = last.bodies['mario-payload'].y;
+      } else {
+        effXm = (this.state.mario.x + this.state.mario.width / 2) / scale;
+        effYm = (this.state.mario.y + this.state.mario.height / 2) / scale;
+      }
+
+      // desired effector position after this dt in meters
+      const desiredXm = effXm + (vx * dt) / scale;
+
+      const baseLeft = this.marioActuator.params.baseLeft;
+      const baseRight = this.marioActuator.params.baseRight;
+      const baseLeftM = { x: baseLeft.x / scale, y: baseLeft.y / scale };
+      const baseRightM = { x: baseRight.x / scale, y: baseRight.y / scale };
+
+      // compute desired motor base angles (simple IK approximation)
+      const leftDesiredAngle = Math.atan2(effYm - baseLeftM.y, desiredXm - baseLeftM.x);
+      const rightDesiredAngle = Math.atan2(effYm - baseRightM.y, desiredXm - baseRightM.x);
+
+      // command base joint motors
+      this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity });
+      this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity });
+
+      // Joint-actuated jump: briefly command a rapid angle change to generate upward reaction
+      if (input.jumpPressed && this.jumpCooldown === 0) {
+        this.jumpCooldown = this.jumpCooldownDuration;
+        const jumpDelta = -1.2; // radians to move (tunable)
+        // pulse motors
+        this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle + jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
+        this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle - jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
+        // revert after short pulse
+        setTimeout(() => {
+          if (!this.simBridge) return;
+          this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+          this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+        }, 120);
+      }
+
+    } else {
+
+      this.updateMario(
+        dt,
+        input,
+      );
+
+    }
 
 
     this.updateActuators();
