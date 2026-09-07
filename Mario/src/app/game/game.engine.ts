@@ -336,11 +336,23 @@ export class GameEngine {
 
   private readonly maxHorizontalDeceleration = 1400;
 
+  private readonly maxHorizontalJerk = 1800;
+
   private readonly maxVerticalAcceleration = 2000;
+
+  private readonly maxVerticalJerk = 2600;
+
+  private readonly maxMotorAngularRate = 4.2;
+
+  private readonly maxMotorTorqueDemand = 1.8;
 
   private readonly maxJumpPlannerSamples = 6;
 
+  private readonly trajectoryCandidateCount = 5;
+
   private marioVelocityX = 0;
+
+  private marioAccelerationX = 0;
 
   private readonly jumpDuration = 0.9;
 
@@ -452,6 +464,8 @@ export class GameEngine {
     this.jumpCooldown = 0;
 
     this.marioVelocityX = 0;
+
+    this.marioAccelerationX = 0;
 
     this.updateActuators();
 
@@ -880,43 +894,116 @@ export class GameEngine {
       const oldX =
         this.state.mario.x;
 
-      const candidateVelocities =
-        this.buildCandidateHorizontalVelocities(
+      const trajectoryCandidates =
+        this.buildTrajectoryCandidates(
+          oldX,
           direction,
           deltaTime,
         );
 
       let selectedX = oldX;
       let selectedVelocity = this.marioVelocityX;
+      let selectedAcceleration = this.marioAccelerationX;
+      let selectedScore = Number.NEGATIVE_INFINITY;
 
       for (
-        const velocity of candidateVelocities
+        const candidate of trajectoryCandidates
       ) {
 
-        const candidateX =
+        const multiStepValid =
+          this.validateMultiStepCandidate(
+            oldX,
+            candidate.position,
+            direction,
+            deltaTime,
+          );
+
+        const predictedX =
+          this.validateMotionPath(
+            oldX,
+            candidate.position,
+            'x',
+          );
+
+        if (
+          !multiStepValid ||
+          predictedX !== candidate.position ||
+          !this.isMotorMotionFeasible(
+            oldX,
+            candidate.position,
+            deltaTime,
+          )
+        ) {
+          continue;
+        }
+
+
+        const score =
+          this.scoreTrajectoryCandidate(
+            candidate.position,
+            oldX,
+            candidate.velocity,
+            candidate.acceleration,
+            direction,
+          );
+
+        if (
+          score > selectedScore
+        ) {
+
+          selectedX = candidate.position;
+          selectedVelocity = candidate.velocity;
+          selectedAcceleration = candidate.acceleration;
+          selectedScore = score;
+
+        }
+
+      }
+
+      if (
+        selectedX === oldX
+      ) {
+
+        const fallbackX =
           Math.max(
             0,
             Math.min(
               this.state.width -
               this.state.mario.width,
               oldX +
-              velocity *
-              deltaTime,
+              direction *
+              Math.min(
+                this.moveSpeed *
+                deltaTime,
+                this.maxHorizontalStep *
+                2,
+              ),
             ),
           );
 
-        const predictedX =
+        const fallbackValid =
           this.validateMotionPath(
             oldX,
-            candidateX,
+            fallbackX,
             'x',
+          ) === fallbackX &&
+          this.isMotorMotionFeasible(
+            oldX,
+            fallbackX,
+            deltaTime,
           );
 
-        if (predictedX === candidateX) {
+        if (fallbackValid) {
 
-          selectedX = candidateX;
-          selectedVelocity = velocity;
-          break;
+          selectedX = fallbackX;
+          selectedVelocity =
+            direction *
+            this.moveSpeed *
+            0.85;
+          selectedAcceleration =
+            (selectedVelocity -
+              this.marioVelocityX) /
+            Math.max(deltaTime, 0.016);
 
         }
 
@@ -931,6 +1018,11 @@ export class GameEngine {
           ? 0
           : selectedVelocity;
 
+      this.marioAccelerationX =
+        selectedX === oldX
+          ? 0
+          : selectedAcceleration;
+
 
       if (
         this.collidesWithObstacleFromSide(
@@ -944,6 +1036,9 @@ export class GameEngine {
         this.marioVelocityX =
           0;
 
+        this.marioAccelerationX =
+          0;
+
       }
 
 
@@ -955,6 +1050,9 @@ export class GameEngine {
           oldX;
 
         this.marioVelocityX =
+          0;
+
+        this.marioAccelerationX =
           0;
 
       }
@@ -976,6 +1074,9 @@ export class GameEngine {
           drag;
 
       }
+
+      this.marioAccelerationX =
+        0;
 
     }
 
@@ -1051,6 +1152,10 @@ export class GameEngine {
         this.maxVerticalAcceleration *
         deltaTime;
 
+      const jerkLimitedVerticalVelocity =
+        this.maxVerticalJerk *
+        deltaTime;
+
       const newY =
         this.jumpBaseY -
         Math.sin(
@@ -1064,7 +1169,10 @@ export class GameEngine {
           newY -
           oldY,
         ) >
-        targetVerticalVelocity
+        Math.min(
+          targetVerticalVelocity,
+          jerkLimitedVerticalVelocity,
+        )
       ) {
 
         const clippedY =
@@ -1073,7 +1181,16 @@ export class GameEngine {
             newY -
             oldY,
           ) *
-          targetVerticalVelocity;
+          Math.min(
+            Math.abs(
+              newY -
+              oldY,
+            ),
+            Math.min(
+              targetVerticalVelocity,
+              jerkLimitedVerticalVelocity,
+            ),
+          );
 
         const predictedY =
           this.validateMotionPath(
@@ -1592,82 +1709,310 @@ export class GameEngine {
   }
 
 
-  private buildCandidateHorizontalVelocities(
+  private buildTrajectoryCandidates(
+   startX: number,
    direction: number,
    deltaTime: number,
-  ): number[] {
+  ): Array<{
+   position: number;
+   velocity: number;
+   acceleration: number;
+  }> {
 
-   const desiredVelocity =
+   const baseVelocity =
+     this.marioVelocityX;
+
+   const targetVelocity =
      direction *
      this.moveSpeed;
 
-   const maxStep =
+   const accelerationRamp =
+     this.marioVelocityX +
+     Math.sign(
+       targetVelocity -
+       this.marioVelocityX,
+     ) *
      this.maxHorizontalAcceleration *
      deltaTime;
 
-   const candidates =
-     new Set<number>();
+   const velocitySteps =
+     [
+       baseVelocity,
+       targetVelocity,
+       accelerationRamp,
+       direction *
+       this.moveSpeed *
+       0.9,
+       direction *
+       this.moveSpeed *
+       0.75,
+       direction *
+       this.moveSpeed *
+       0.5,
+       direction *
+       this.moveSpeed *
+       0.25,
+       0,
+     ];
 
-   candidates.add(
-     this.marioVelocityX,
-   );
-
-   candidates.add(
-     desiredVelocity,
-   );
-
-   candidates.add(
-     this.marioVelocityX +
-     Math.sign(
-       desiredVelocity -
-       this.marioVelocityX,
-     ) *
-     maxStep,
-   );
-
-   candidates.add(
-     this.marioVelocityX +
-     Math.sign(
-       desiredVelocity -
-       this.marioVelocityX,
-     ) *
-     Math.min(
-       Math.abs(
-         desiredVelocity -
-         this.marioVelocityX,
+   const uniqueVelocities =
+     Array.from(
+       new Set(
+         velocitySteps.map(
+           (velocity) =>
+             Math.max(
+               -this.moveSpeed,
+               Math.min(
+                 this.moveSpeed,
+                 velocity,
+               ),
+             ),
+         ),
        ),
-       maxStep,
-     ),
-   );
+     );
 
-   candidates.add(
-     direction *
-     this.moveSpeed *
-     0.5,
-   );
-
-   candidates.add(
-     direction *
-     this.moveSpeed *
-     0.25,
-   );
-
-   return Array.from(candidates)
-     .map(
-       (velocity) =>
+   return uniqueVelocities
+     .map((velocity) => {
+       const clampedVelocity =
          Math.max(
            -this.moveSpeed,
            Math.min(
              this.moveSpeed,
              velocity,
            ),
-         ),
+         );
+
+       const position =
+         Math.max(
+           0,
+           Math.min(
+             this.state.width -
+             this.state.mario.width,
+             startX +
+             clampedVelocity *
+             deltaTime,
+           ),
+         );
+
+       return {
+         position,
+         velocity: clampedVelocity,
+         acceleration:
+           (clampedVelocity -
+             this.marioVelocityX) /
+           Math.max(deltaTime, 0.016),
+       };
+     })
+     .filter(
+       (candidate) =>
+         Math.abs(
+           candidate.position -
+           startX,
+         ) > 0 ||
+         Math.abs(candidate.velocity) > 0,
      )
-     .sort(
-       (a, b) =>
-         Math.abs(b) -
-         Math.abs(a),
+     .slice(0, this.trajectoryCandidateCount);
+
+  }
+
+
+  private validateMultiStepCandidate(
+   startX: number,
+   targetX: number,
+   direction: number,
+   deltaTime: number,
+  ): boolean {
+
+   if (startX === targetX) {
+     return true;
+   }
+
+   const span =
+     targetX - startX;
+
+   const stepCount =
+     Math.max(
+       2,
+       Math.ceil(
+         Math.abs(span) /
+         Math.max(
+           this.maxHorizontalStep,
+           8,
+         ),
+       ),
      );
+
+   for (
+     let step = 1;
+     step <= stepCount;
+     step++
+   ) {
+
+     const sampleX =
+       startX +
+       span *
+       (step / stepCount);
+
+     const samplePose = {
+       ...this.state.mario,
+       x: sampleX,
+     };
+
+     if (
+       !this.isPoseValid(
+         samplePose.x,
+         samplePose.y,
+       ) ||
+       this.collidesWithObstacleFromSide(
+         samplePose,
+       )
+     ) {
+       return false;
+     }
+
+     const rate =
+       Math.abs(
+         sampleX -
+         startX,
+       ) /
+       Math.max(deltaTime, 0.016);
+
+     if (
+       rate >
+       this.moveSpeed *
+       1.5 &&
+       direction *
+       (sampleX - startX) < 0
+     ) {
+       return false;
+     }
+   }
+
+   return true;
+
+  }
+
+
+  private scoreTrajectoryCandidate(
+   candidatePosition: number,
+   startX: number,
+   candidateVelocity: number,
+   candidateAcceleration: number,
+   direction: number,
+  ): number {
+
+   const progress =
+     Math.abs(
+       candidatePosition -
+       startX,
+     );
+
+   const directionalBias =
+     direction *
+     (candidatePosition -
+       startX);
+
+   const velocityMatch =
+     direction *
+     candidateVelocity;
+
+   const accelerationPenalty =
+     Math.abs(candidateAcceleration) /
+     (this.maxHorizontalAcceleration * 2);
+
+   const velocityPenalty =
+     Math.max(
+       0,
+       Math.abs(candidateVelocity) -
+       this.moveSpeed *
+       0.7,
+     ) /
+     this.moveSpeed;
+
+   return (
+     progress *
+     7 +
+     Math.max(
+       0,
+       directionalBias,
+     ) *
+     2.25 +
+     Math.max(
+       0,
+       velocityMatch,
+     ) *
+     0.08 -
+     accelerationPenalty *
+     3 -
+     velocityPenalty *
+     2.5
+   );
+
+  }
+
+
+  private isMotorMotionFeasible(
+   fromX: number,
+   toX: number,
+   deltaTime: number,
+  ): boolean {
+
+   const fromPose =
+     this.state.mario;
+
+   const candidatePose: Character = {
+     ...fromPose,
+     x: toX,
+   };
+
+   const startGeometry =
+     this.calculateMarioMechanismAtPose(
+       fromPose,
+     );
+
+   const endGeometry =
+     this.calculateMarioMechanismAtPose(
+       candidatePose,
+     );
+
+   const leftRate =
+     Math.abs(
+       endGeometry.leftMotorAngle -
+       startGeometry.leftMotorAngle,
+     ) /
+     Math.max(deltaTime, 0.016);
+
+   const rightRate =
+     Math.abs(
+       endGeometry.rightMotorAngle -
+       startGeometry.rightMotorAngle,
+     ) /
+     Math.max(deltaTime, 0.016);
+
+   const leftTorque =
+     Math.abs(
+       endGeometry.leftMotorAngle -
+       startGeometry.leftMotorAngle,
+     ) *
+     this.maxMotorTorqueDemand;
+
+   const rightTorque =
+     Math.abs(
+       endGeometry.rightMotorAngle -
+       startGeometry.rightMotorAngle,
+     ) *
+     this.maxMotorTorqueDemand;
+
+   return (
+     leftRate <=
+     this.maxMotorAngularRate &&
+     rightRate <=
+     this.maxMotorAngularRate &&
+     leftTorque <=
+     this.maxMotorTorqueDemand &&
+     rightTorque <=
+     this.maxMotorTorqueDemand
+   );
 
   }
 
