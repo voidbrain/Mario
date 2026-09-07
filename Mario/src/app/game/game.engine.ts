@@ -332,6 +332,16 @@ export class GameEngine {
 
   private readonly maxVerticalStep = 10;
 
+  private readonly maxHorizontalAcceleration = 1000;
+
+  private readonly maxHorizontalDeceleration = 1400;
+
+  private readonly maxVerticalAcceleration = 2000;
+
+  private readonly maxJumpPlannerSamples = 6;
+
+  private marioVelocityX = 0;
+
   private readonly jumpDuration = 0.9;
 
   private readonly jumpHeight = 150;
@@ -440,6 +450,8 @@ export class GameEngine {
     this.thwompDirection = 1;
 
     this.jumpCooldown = 0;
+
+    this.marioVelocityX = 0;
 
     this.updateActuators();
 
@@ -868,33 +880,56 @@ export class GameEngine {
       const oldX =
         this.state.mario.x;
 
-
-      const newX =
-        Math.max(
-          0,
-
-          Math.min(
-            this.state.width -
-            this.state.mario.width,
-
-            oldX +
-            direction *
-            this.moveSpeed *
-            deltaTime,
-          ),
+      const candidateVelocities =
+        this.buildCandidateHorizontalVelocities(
+          direction,
+          deltaTime,
         );
 
+      let selectedX = oldX;
+      let selectedVelocity = this.marioVelocityX;
 
-      const predictedX =
-        this.validateMotionPath(
-          oldX,
-          newX,
-          'x',
-        );
+      for (
+        const velocity of candidateVelocities
+      ) {
+
+        const candidateX =
+          Math.max(
+            0,
+            Math.min(
+              this.state.width -
+              this.state.mario.width,
+              oldX +
+              velocity *
+              deltaTime,
+            ),
+          );
+
+        const predictedX =
+          this.validateMotionPath(
+            oldX,
+            candidateX,
+            'x',
+          );
+
+        if (predictedX === candidateX) {
+
+          selectedX = candidateX;
+          selectedVelocity = velocity;
+          break;
+
+        }
+
+      }
 
 
       this.state.mario.x =
-        predictedX;
+        selectedX;
+
+      this.marioVelocityX =
+        selectedX === oldX
+          ? 0
+          : selectedVelocity;
 
 
       if (
@@ -906,6 +941,9 @@ export class GameEngine {
         this.state.mario.x =
           oldX;
 
+        this.marioVelocityX =
+          0;
+
       }
 
 
@@ -915,6 +953,27 @@ export class GameEngine {
 
         this.state.mario.x =
           oldX;
+
+        this.marioVelocityX =
+          0;
+
+      }
+
+    } else {
+
+      const drag =
+        this.maxHorizontalDeceleration *
+        deltaTime;
+
+      if (Math.abs(this.marioVelocityX) <= drag) {
+
+        this.marioVelocityX = 0;
+
+      } else {
+
+        this.marioVelocityX -=
+          Math.sign(this.marioVelocityX) *
+          drag;
 
       }
 
@@ -988,6 +1047,9 @@ export class GameEngine {
         this.jumpTime /
         this.jumpDuration;
 
+      const targetVerticalVelocity =
+        this.maxVerticalAcceleration *
+        deltaTime;
 
       const newY =
         this.jumpBaseY -
@@ -996,6 +1058,57 @@ export class GameEngine {
           Math.PI,
         ) *
         this.jumpHeight;
+
+      if (
+        Math.abs(
+          newY -
+          oldY,
+        ) >
+        targetVerticalVelocity
+      ) {
+
+        const clippedY =
+          oldY +
+          Math.sign(
+            newY -
+            oldY,
+          ) *
+          targetVerticalVelocity;
+
+        const predictedY =
+          this.validateMotionPath(
+            oldY,
+            clippedY,
+            'y',
+          );
+
+        if (predictedY !== clippedY) {
+
+          this.state.mario.y =
+            oldY;
+
+          this.jumpTime = 0;
+
+          return;
+
+        }
+
+        this.state.mario.y =
+          clippedY;
+
+        this.jumpTime -=
+          deltaTime;
+
+        if (this.jumpTime <= 0) {
+
+          this.jumpTime = 0;
+          this.landAfterJump();
+
+        }
+
+        return;
+
+      }
 
 
       const oldBottom =
@@ -1475,6 +1588,86 @@ export class GameEngine {
 
 
     return landing;
+
+  }
+
+
+  private buildCandidateHorizontalVelocities(
+   direction: number,
+   deltaTime: number,
+  ): number[] {
+
+   const desiredVelocity =
+     direction *
+     this.moveSpeed;
+
+   const maxStep =
+     this.maxHorizontalAcceleration *
+     deltaTime;
+
+   const candidates =
+     new Set<number>();
+
+   candidates.add(
+     this.marioVelocityX,
+   );
+
+   candidates.add(
+     desiredVelocity,
+   );
+
+   candidates.add(
+     this.marioVelocityX +
+     Math.sign(
+       desiredVelocity -
+       this.marioVelocityX,
+     ) *
+     maxStep,
+   );
+
+   candidates.add(
+     this.marioVelocityX +
+     Math.sign(
+       desiredVelocity -
+       this.marioVelocityX,
+     ) *
+     Math.min(
+       Math.abs(
+         desiredVelocity -
+         this.marioVelocityX,
+       ),
+       maxStep,
+     ),
+   );
+
+   candidates.add(
+     direction *
+     this.moveSpeed *
+     0.5,
+   );
+
+   candidates.add(
+     direction *
+     this.moveSpeed *
+     0.25,
+   );
+
+   return Array.from(candidates)
+     .map(
+       (velocity) =>
+         Math.max(
+           -this.moveSpeed,
+           Math.min(
+             this.moveSpeed,
+             velocity,
+           ),
+         ),
+     )
+     .sort(
+       (a, b) =>
+         Math.abs(b) -
+         Math.abs(a),
+     );
 
   }
 
