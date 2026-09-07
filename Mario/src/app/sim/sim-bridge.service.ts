@@ -88,8 +88,10 @@ export class SimBridge {
       // If creation failed (likely bundler didn't emit worker), fall back to Blob-based inlined worker
       try {
         const workerSrc = `
-          // inlined module worker: simple five-bar emulation
+          // inlined fallback worker: same protocol as the real sim, but lightweight enough to survive dev-server constraints.
           const FIVE_BARS = {};
+          const BODIES = {};
+          const JOINTS = {};
           let running = false;
           let lastT = null;
           let stepMs = ${1000 / (config?.timeStep ? 1 / config.timeStep : 120)};
@@ -99,8 +101,40 @@ export class SimBridge {
 
           function now() { return (typeof performance !== 'undefined') ? performance.now() : Date.now(); }
 
+          function createBody(id, x, y, box = { w: 1, h: 1 }, dynamic = true) {
+            const body = { id, x, y, vx: 0, vy: 0, angle: 0, av: 0, box, dynamic };
+            BODIES[id] = body;
+            return body;
+          }
+
+          function createRevoluteJoint(id, bodyA, bodyB, anchorA = null, anchorB = null, motor = null) {
+            JOINTS[id] = { id, bodyA, bodyB, anchorA, anchorB, motor: motor ? { ...motor } : null, angle: 0, speed: 0 };
+            return JOINTS[id];
+          }
+
+          function setBodyTransform(id, x, y, angle = 0) {
+            const body = BODIES[id];
+            if (!body) return;
+            body.x = x;
+            body.y = y;
+            body.angle = angle;
+          }
+
+          function setBodyPosition(id, x, y) {
+            const body = BODIES[id];
+            if (!body) return;
+            body.x = x;
+            body.y = y;
+          }
+
+          function setBodyVelocity(id, vx, vy) {
+            const body = BODIES[id];
+            if (!body) return;
+            body.vx = vx;
+            body.vy = vy;
+          }
+
           function createFiveBarInternal(id, cfg) {
-            // cfg: baseLeft{ x,y }, baseRight{ x,y }, effector{x,y}, upperArm, lowerArm
             const fb = {
               id,
               baseLeft: cfg.baseLeft,
@@ -110,11 +144,9 @@ export class SimBridge {
               lowerArm: cfg.lowerArm,
               payloadSize: cfg.payloadSize || { w: 0.3, h: 0.3 },
               motors: {
-                baseLeft: { desiredAngle: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp, }
-                ,
-                baseRight: { desiredAngle: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp, }
+                baseLeft: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp },
+                baseRight: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp },
               },
-              // joint states
               leftAngle: 0,
               rightAngle: 0,
               leftSpeed: 0,
@@ -123,7 +155,6 @@ export class SimBridge {
               inertia: 0.02,
             };
 
-            // initialize angles to point roughly at effector
             fb.leftAngle = Math.atan2(fb.effector.y - fb.baseLeft.y, fb.effector.x - fb.baseLeft.x);
             fb.rightAngle = Math.atan2(fb.effector.y - fb.baseRight.y, fb.effector.x - fb.baseRight.x);
             FIVE_BARS[id] = fb;
@@ -131,12 +162,10 @@ export class SimBridge {
           }
 
           function forwardKinematics(fb) {
-            // compute left end and right end positions
             const lx = fb.baseLeft.x + Math.cos(fb.leftAngle) * fb.upperArm;
             const ly = fb.baseLeft.y + Math.sin(fb.leftAngle) * fb.upperArm;
             const rx = fb.baseRight.x + Math.cos(fb.rightAngle) * fb.upperArm;
             const ry = fb.baseRight.y + Math.sin(fb.rightAngle) * fb.upperArm;
-            // payload position as midpoint (approx)
             const px = (lx + rx) / 2;
             const py = (ly + ry) / 2;
             return { x: px, y: py };
@@ -145,20 +174,16 @@ export class SimBridge {
           function step(dt) {
             Object.keys(FIVE_BARS).forEach((id) => {
               const fb = FIVE_BARS[id];
-              // motors: compute torque via PD
               ['baseLeft','baseRight'].forEach((mKey) => {
                 const motor = fb.motors[mKey];
                 const curAngle = mKey === 'baseLeft' ? fb.leftAngle : fb.rightAngle;
                 const curSpeed = mKey === 'baseLeft' ? fb.leftSpeed : fb.rightSpeed;
-                const angleError = motor.desiredAngle - curAngle;
-                const speedError = motor.desiredSpeed - curSpeed;
-                let torque = motor.kP * angleError + motor.kD * speedError;
-                // clamp
+                const angleError = (motor.desiredAngle ?? 0) - curAngle;
+                const speedError = (motor.desiredSpeed ?? 0) - curSpeed;
+                let torque = (motor.kP || 80) * angleError + (motor.kD || 2) * speedError;
                 const maxT = motor.maxTorque || 0.001;
                 if (torque > maxT) torque = maxT;
                 if (torque < -maxT) torque = -maxT;
-
-                // simple angular acceleration: torque / inertia
                 const angAcc = torque / fb.inertia;
                 if (mKey === 'baseLeft') {
                   fb.leftSpeed += angAcc * dt;
@@ -168,7 +193,6 @@ export class SimBridge {
                   fb.rightAngle += fb.rightSpeed * dt;
                 }
 
-                // thermal
                 const heatingCoeff = 0.01;
                 const coolingCoeff = 0.05;
                 motor.temp += (torque * torque) * heatingCoeff * dt;
@@ -188,7 +212,11 @@ export class SimBridge {
               motors[id + '-baseLeftJoint'] = { desiredAngle: fb.motors.baseLeft.desiredAngle, desiredSpeed: fb.motors.baseLeft.desiredSpeed, temp: fb.motors.baseLeft.temp, maxTorque: fb.motors.baseLeft.maxTorque };
               motors[id + '-baseRightJoint'] = { desiredAngle: fb.motors.baseRight.desiredAngle, desiredSpeed: fb.motors.baseRight.desiredSpeed, temp: fb.motors.baseRight.temp, maxTorque: fb.motors.baseRight.maxTorque };
             });
-            postMessage({ type: 'state', t: now() / 1000, bodies, joints: {}, motors });
+            Object.keys(BODIES).forEach((id) => {
+              const b = BODIES[id];
+              bodies[id] = { x: b.x, y: b.y, angle: b.angle, vx: b.vx, vy: b.vy, av: b.av };
+            });
+            postMessage({ type: 'state', t: now() / 1000, bodies, joints: JOINTS, motors });
           }
 
           let loopId = null;
@@ -212,13 +240,32 @@ export class SimBridge {
             try {
               switch (msg.type) {
                 case 'init': {
-                  // config: timeStep, publishHz, ambientTemp
                   if (msg.config) {
                     if (msg.config.timeStep) stepMs = 1000 / (1 / msg.config.timeStep);
                     if (msg.config.publishHz) publishMs = 1000 / msg.config.publishHz;
                     if (typeof msg.config.ambientTemp === 'number') ambientTemp = msg.config.ambientTemp;
                   }
                   postMessage({ type: 'inited' });
+                  break;
+                }
+                case 'createBody': {
+                  createBody(msg.id, msg.x || 0, msg.y || 0, msg.box || { w: 1, h: 1 }, msg.dynamic !== false);
+                  break;
+                }
+                case 'createRevoluteJoint': {
+                  createRevoluteJoint(msg.id, msg.bodyA, msg.bodyB, msg.anchorA || null, msg.anchorB || null, msg.motor || null);
+                  break;
+                }
+                case 'setBodyPosition': {
+                  setBodyPosition(msg.id, msg.x || 0, msg.y || 0);
+                  break;
+                }
+                case 'setBodyVelocity': {
+                  setBodyVelocity(msg.id, msg.vx || 0, msg.vy || 0);
+                  break;
+                }
+                case 'setBodyTransform': {
+                  setBodyTransform(msg.id, msg.x || 0, msg.y || 0, msg.angle || 0);
                   break;
                 }
                 case 'createFiveBar': {
@@ -229,9 +276,7 @@ export class SimBridge {
                 case 'setMotor': {
                   const { id, motor } = msg;
                   if (!id || !motor) break;
-                  // id format: '<prefix>-baseLeftJoint' or '-baseRightJoint'
-                  const parts = id.split('-');
-                  const prefix = parts[0];
+                  const prefix = id.split('-')[0];
                   const fb = FIVE_BARS[prefix];
                   if (!fb) break;
                   if (id.endsWith('baseLeftJoint')) {

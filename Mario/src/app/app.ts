@@ -144,13 +144,23 @@ export class App implements OnDestroy {
 
   start(): void {
 
+    if (this.engine.state.status === 'playing') {
+      return;
+    }
+
     this.engine.start();
+    this.input.left = false;
+    this.input.right = false;
+    this.input.jumpPressed = false;
   }
 
 
   reset(): void {
 
     this.engine.reset();
+    this.input.left = false;
+    this.input.right = false;
+    this.input.jumpPressed = false;
   }
 
 
