@@ -24,322 +24,281 @@ export class SimBridge {
     }
 
     if (config && typeof config.scale === 'number') this.scale = config.scale;
+    this.inited = false;
+    this.running = false;
 
-    // Helper to wire a newly created worker
-    const wireWorker = (w: Worker) => {
-      this.worker = w;
-      this.worker.onmessage = (ev: MessageEvent) => {
-        const msg = ev.data || {};
-        if (!msg || !msg.type) return;
-        switch (msg.type) {
-          case 'inited':
-            this.inited = true;
-            if (this.initedResolve) {
-              this.initedResolve();
-              this.initedResolve = null;
-              this.initedReject = null;
-            }
-            break;
-          case 'createdBody':
-            // ignore
-            break;
-          case 'createdJoint':
-            // ignore
-            break;
-          case 'started':
-            this.running = true;
-            break;
-          case 'stopped':
-            this.running = false;
-            break;
-          case 'state':
-            this.lastState = msg;
-            if (this.stateCallback) this.stateCallback(msg);
-            break;
-          case 'error':
-            // worker-internal error reported
-            if (this.errorCallback) this.errorCallback(msg.error);
-            break;
-          default:
-            break;
-        }
-      };
-
-      this.worker.onerror = (err) => {
-        if (this.initedReject) {
-          this.initedReject(err);
-          this.initedResolve = null;
-          this.initedReject = null;
-        }
-        if (this.errorCallback) this.errorCallback(err);
-        // fallback stop
-        this.stop();
-      };
-    };
-
-    // First try the standard module worker (bundler emitted)
-    try {
-      // @ts-ignore
-      const w = new Worker(new URL('./sim.worker.ts', import.meta.url), { type: 'module' });
-      wireWorker(w);
-      // send initial init; the worker replies with 'inited' when ready
-      this.post({ type: 'init', config: { timeStep: config?.timeStep || 1 / 120, publishHz: config?.publishHz || 60, ambientTemp: config?.ambientTemp || 25 } });
-    } catch (e) {
-      // If creation failed (likely bundler didn't emit worker), fall back to Blob-based inlined worker
-      try {
-        const workerSrc = `
-          // inlined fallback worker: same protocol as the real sim, but lightweight enough to survive dev-server constraints.
-          const FIVE_BARS = {};
-          const BODIES = {};
-          const JOINTS = {};
-          let running = false;
-          let lastT = null;
-          let stepMs = ${1000 / (config?.timeStep ? 1 / config.timeStep : 120)};
-          let publishMs = ${1000 / (config?.publishHz || 60)};
-          let publishAccum = 0;
-          let ambientTemp = ${config?.ambientTemp || 25};
-
-          function now() { return (typeof performance !== 'undefined') ? performance.now() : Date.now(); }
-
-          function createBody(id, x, y, box = { w: 1, h: 1 }, dynamic = true) {
-            const body = { id, x, y, vx: 0, vy: 0, angle: 0, av: 0, box, dynamic };
-            BODIES[id] = body;
-            return body;
-          }
-
-          function createRevoluteJoint(id, bodyA, bodyB, anchorA = null, anchorB = null, motor = null) {
-            JOINTS[id] = { id, bodyA, bodyB, anchorA, anchorB, motor: motor ? { ...motor } : null, angle: 0, speed: 0 };
-            return JOINTS[id];
-          }
-
-          function setBodyTransform(id, x, y, angle = 0) {
-            const body = BODIES[id];
-            if (!body) return;
-            body.x = x;
-            body.y = y;
-            body.angle = angle;
-          }
-
-          function setBodyPosition(id, x, y) {
-            const body = BODIES[id];
-            if (!body) return;
-            body.x = x;
-            body.y = y;
-          }
-
-          function setBodyVelocity(id, vx, vy) {
-            const body = BODIES[id];
-            if (!body) return;
-            body.vx = vx;
-            body.vy = vy;
-          }
-
-          function createFiveBarInternal(id, cfg) {
-            const fb = {
-              id,
-              baseLeft: cfg.baseLeft,
-              baseRight: cfg.baseRight,
-              effector: cfg.effector,
-              upperArm: cfg.upperArm,
-              lowerArm: cfg.lowerArm,
-              payloadSize: cfg.payloadSize || { w: 0.3, h: 0.3 },
-              motors: {
-                baseLeft: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp },
-                baseRight: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp },
-              },
-              leftAngle: 0,
-              rightAngle: 0,
-              leftSpeed: 0,
-              rightSpeed: 0,
-              mass: 1,
-              inertia: 0.02,
-            };
-
-            fb.leftAngle = Math.atan2(fb.effector.y - fb.baseLeft.y, fb.effector.x - fb.baseLeft.x);
-            fb.rightAngle = Math.atan2(fb.effector.y - fb.baseRight.y, fb.effector.x - fb.baseRight.x);
-            FIVE_BARS[id] = fb;
-            return fb;
-          }
-
-          function forwardKinematics(fb) {
-            const lx = fb.baseLeft.x + Math.cos(fb.leftAngle) * fb.upperArm;
-            const ly = fb.baseLeft.y + Math.sin(fb.leftAngle) * fb.upperArm;
-            const rx = fb.baseRight.x + Math.cos(fb.rightAngle) * fb.upperArm;
-            const ry = fb.baseRight.y + Math.sin(fb.rightAngle) * fb.upperArm;
-            const px = (lx + rx) / 2;
-            const py = (ly + ry) / 2;
-            return { x: px, y: py };
-          }
-
-          function step(dt) {
-            Object.keys(FIVE_BARS).forEach((id) => {
-              const fb = FIVE_BARS[id];
-              ['baseLeft','baseRight'].forEach((mKey) => {
-                const motor = fb.motors[mKey];
-                const curAngle = mKey === 'baseLeft' ? fb.leftAngle : fb.rightAngle;
-                const curSpeed = mKey === 'baseLeft' ? fb.leftSpeed : fb.rightSpeed;
-                const angleError = (motor.desiredAngle ?? 0) - curAngle;
-                const speedError = (motor.desiredSpeed ?? 0) - curSpeed;
-                let torque = (motor.kP || 80) * angleError + (motor.kD || 2) * speedError;
-                const maxT = motor.maxTorque || 0.001;
-                if (torque > maxT) torque = maxT;
-                if (torque < -maxT) torque = -maxT;
-                const angAcc = torque / fb.inertia;
-                if (mKey === 'baseLeft') {
-                  fb.leftSpeed += angAcc * dt;
-                  fb.leftAngle += fb.leftSpeed * dt;
-                } else {
-                  fb.rightSpeed += angAcc * dt;
-                  fb.rightAngle += fb.rightSpeed * dt;
-                }
-
-                const heatingCoeff = 0.01;
-                const coolingCoeff = 0.05;
-                motor.temp += (torque * torque) * heatingCoeff * dt;
-                motor.temp += -coolingCoeff * (motor.temp - ambientTemp) * dt;
-                motor.temp = Math.max(ambientTemp, Math.min(200, motor.temp));
-              });
-            });
-          }
-
-          function publish() {
-            const bodies = {};
-            const motors = {};
-            Object.keys(FIVE_BARS).forEach((id) => {
-              const fb = FIVE_BARS[id];
-              const eff = forwardKinematics(fb);
-              bodies[id + '-payload'] = { x: eff.x, y: eff.y, angle: 0, vx: 0, vy: 0, av: 0 };
-              motors[id + '-baseLeftJoint'] = { desiredAngle: fb.motors.baseLeft.desiredAngle, desiredSpeed: fb.motors.baseLeft.desiredSpeed, temp: fb.motors.baseLeft.temp, maxTorque: fb.motors.baseLeft.maxTorque };
-              motors[id + '-baseRightJoint'] = { desiredAngle: fb.motors.baseRight.desiredAngle, desiredSpeed: fb.motors.baseRight.desiredSpeed, temp: fb.motors.baseRight.temp, maxTorque: fb.motors.baseRight.maxTorque };
-            });
-            Object.keys(BODIES).forEach((id) => {
-              const b = BODIES[id];
-              bodies[id] = { x: b.x, y: b.y, angle: b.angle, vx: b.vx, vy: b.vy, av: b.av };
-            });
-            postMessage({ type: 'state', t: now() / 1000, bodies, joints: JOINTS, motors });
-          }
-
-          let loopId = null;
-          function runLoop() {
-            if (!running) return;
-            const t = now();
-            if (!lastT) lastT = t;
-            let dt = Math.min((t - lastT) / 1000, 0.05);
-            lastT = t;
-            step(dt);
-            publishAccum += (dt * 1000);
-            if (publishAccum >= publishMs) {
-              publish();
-              publishAccum = 0;
-            }
-            loopId = setTimeout(runLoop, 0);
-          }
-
-          onmessage = (ev) => {
-            const msg = ev.data || {};
-            try {
-              switch (msg.type) {
-                case 'init': {
-                  if (msg.config) {
-                    if (msg.config.timeStep) stepMs = 1000 / (1 / msg.config.timeStep);
-                    if (msg.config.publishHz) publishMs = 1000 / msg.config.publishHz;
-                    if (typeof msg.config.ambientTemp === 'number') ambientTemp = msg.config.ambientTemp;
-                  }
-                  postMessage({ type: 'inited' });
-                  break;
-                }
-                case 'createBody': {
-                  createBody(msg.id, msg.x || 0, msg.y || 0, msg.box || { w: 1, h: 1 }, msg.dynamic !== false);
-                  break;
-                }
-                case 'createRevoluteJoint': {
-                  createRevoluteJoint(msg.id, msg.bodyA, msg.bodyB, msg.anchorA || null, msg.anchorB || null, msg.motor || null);
-                  break;
-                }
-                case 'setBodyPosition': {
-                  setBodyPosition(msg.id, msg.x || 0, msg.y || 0);
-                  break;
-                }
-                case 'setBodyVelocity': {
-                  setBodyVelocity(msg.id, msg.vx || 0, msg.vy || 0);
-                  break;
-                }
-                case 'setBodyTransform': {
-                  setBodyTransform(msg.id, msg.x || 0, msg.y || 0, msg.angle || 0);
-                  break;
-                }
-                case 'createFiveBar': {
-                  createFiveBarInternal(msg.id, msg.config);
-                  postMessage({ type: 'createdFiveBar', id: msg.id });
-                  break;
-                }
-                case 'setMotor': {
-                  const { id, motor } = msg;
-                  if (!id || !motor) break;
-                  const prefix = id.split('-')[0];
-                  const fb = FIVE_BARS[prefix];
-                  if (!fb) break;
-                  if (id.endsWith('baseLeftJoint')) {
-                    Object.assign(fb.motors.baseLeft, motor);
-                  } else if (id.endsWith('baseRightJoint')) {
-                    Object.assign(fb.motors.baseRight, motor);
-                  }
-                  break;
-                }
-                case 'start': {
-                  if (!running) {
-                    running = true;
-                    lastT = now();
-                    runLoop();
-                    postMessage({ type: 'started' });
-                  }
-                  break;
-                }
-                case 'stop': {
-                  running = false;
-                  if (loopId) clearTimeout(loopId);
-                  postMessage({ type: 'stopped' });
-                  break;
-                }
-                case 'stepOnce': {
-                  const dt = msg.dt || 1 / 120;
-                  step(dt);
-                  publish();
-                  break;
-                }
-                default:
-                  break;
-              }
-            } catch (err) {
-              postMessage({ type: 'error', error: { message: err && err.message ? err.message : String(err), stack: err && err.stack ? err.stack : null } });
-            }
-          }`;
-
-        const blob = new Blob([workerSrc], { type: 'application/javascript' });
-        const url = URL.createObjectURL(blob);
-        const w = new Worker(url, { type: 'module' });
-        wireWorker(w);
-        // send init
-        this.post({ type: 'init', config: { timeStep: config?.timeStep || 1 / 120, publishHz: config?.publishHz || 60, ambientTemp: config?.ambientTemp || 25 } });
-      } catch (err2) {
-        // both approaches failed
-        if (this.initedReject) this.initedReject(err2);
-        return Promise.reject(err2);
-      }
-    }
-
-    return new Promise<void>((resolve, reject) => {
+    const promise = new Promise<void>((resolve, reject) => {
       this.initedResolve = resolve;
       this.initedReject = reject;
+
       const timeout = config?.timeoutMs || 2000;
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (!this.inited) {
           if (this.initedReject) this.initedReject(new Error('SimBridge init timeout'));
-          // ensure worker stopped
           this.stop();
         }
       }, timeout);
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        this.initedResolve = null;
+        this.initedReject = null;
+      };
+
+      const wireWorker = (w: Worker) => {
+        this.worker = w;
+        this.worker.onmessage = (ev: MessageEvent) => {
+          const msg = ev.data || {};
+          if (!msg || !msg.type) return;
+          switch (msg.type) {
+           case 'inited':
+             this.inited = true;
+             cleanup();
+             if (this.initedResolve) {
+               this.initedResolve();
+             }
+             this.initedResolve = null;
+             this.initedReject = null;
+             break;
+           case 'createdBody':
+             break;
+           case 'createdJoint':
+             break;
+           case 'started':
+             this.running = true;
+             break;
+           case 'stopped':
+             this.running = false;
+             break;
+           case 'state':
+             this.lastState = msg;
+             if (this.stateCallback) this.stateCallback(msg);
+             break;
+           case 'error':
+             if (this.errorCallback) this.errorCallback(msg.error);
+             break;
+           default:
+             break;
+          }
+        };
+
+        this.worker.onerror = (err) => {
+          cleanup();
+          if (this.initedReject) {
+           this.initedReject(err);
+          }
+          this.initedResolve = null;
+          this.initedReject = null;
+          if (this.errorCallback) this.errorCallback(err);
+          this.stop();
+        };
+      };
+
+      try {
+        // First try the standard module worker (bundler emitted)
+        const w = new Worker(new URL('./sim.worker.ts', import.meta.url), { type: 'module' });
+        wireWorker(w);
+        this.post({ type: 'init', config: { timeStep: config?.timeStep || 1 / 120, publishHz: config?.publishHz || 60, ambientTemp: config?.ambientTemp || 25 } });
+      } catch (e) {
+        try {
+          const workerSrc = `
+           const FIVE_BARS = {};
+           const BODIES = {};
+           const JOINTS = {};
+           let running = false;
+           let lastT = null;
+           let stepMs = ${1000 / (config?.timeStep ? 1 / config.timeStep : 120)};
+           let publishMs = ${1000 / (config?.publishHz || 60)};
+           let publishAccum = 0;
+           let ambientTemp = ${config?.ambientTemp || 25};
+           function now() { return (typeof performance !== 'undefined') ? performance.now() : Date.now(); }
+           function createBody(id, x, y, box = { w: 1, h: 1 }, dynamic = true) {
+             const body = { id, x, y, vx: 0, vy: 0, angle: 0, av: 0, box, dynamic };
+             BODIES[id] = body;
+             return body;
+           }
+           function createRevoluteJoint(id, bodyA, bodyB, anchorA = null, anchorB = null, motor = null) {
+             JOINTS[id] = { id, bodyA, bodyB, anchorA, anchorB, motor: motor ? { ...motor } : null, angle: 0, speed: 0 };
+             return JOINTS[id];
+           }
+           function setBodyTransform(id, x, y, angle = 0) {
+             const body = BODIES[id];
+             if (!body) return;
+             body.x = x; body.y = y; body.angle = angle;
+           }
+           function setBodyPosition(id, x, y) {
+             const body = BODIES[id];
+             if (!body) return;
+             body.x = x; body.y = y;
+           }
+           function setBodyVelocity(id, vx, vy) {
+             const body = BODIES[id];
+             if (!body) return;
+             body.vx = vx; body.vy = vy;
+           }
+           function createFiveBarInternal(id, cfg) {
+             const fb = { id, baseLeft: cfg.baseLeft, baseRight: cfg.baseRight, effector: cfg.effector, upperArm: cfg.upperArm, lowerArm: cfg.lowerArm, payloadSize: cfg.payloadSize || { w: 0.3, h: 0.3 }, motors: { baseLeft: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp }, baseRight: { desiredAngle: 0, desiredSpeed: 0, speed: 0, maxTorque: (cfg.motor && cfg.motor.maxTorque) || 5, maxSpeed: (cfg.motor && cfg.motor.maxSpeed) || 20, kP: (cfg.motor && cfg.motor.kP) || 80, kD: (cfg.motor && cfg.motor.kD) || 2, temp: (cfg.motor && cfg.motor.initTemp) || ambientTemp } }, leftAngle: 0, rightAngle: 0, leftSpeed: 0, rightSpeed: 0, mass: 1, inertia: 0.02 };
+             fb.leftAngle = Math.atan2(fb.effector.y - fb.baseLeft.y, fb.effector.x - fb.baseLeft.x);
+             fb.rightAngle = Math.atan2(fb.effector.y - fb.baseRight.y, fb.effector.x - fb.baseRight.x);
+             FIVE_BARS[id] = fb;
+             return fb;
+           }
+           function forwardKinematics(fb) {
+             const lx = fb.baseLeft.x + Math.cos(fb.leftAngle) * fb.upperArm;
+             const ly = fb.baseLeft.y + Math.sin(fb.leftAngle) * fb.upperArm;
+             const rx = fb.baseRight.x + Math.cos(fb.rightAngle) * fb.upperArm;
+             const ry = fb.baseRight.y + Math.sin(fb.rightAngle) * fb.upperArm;
+             return { x: (lx + rx) / 2, y: (ly + ry) / 2 };
+           }
+           function step(dt) {
+             Object.keys(FIVE_BARS).forEach((id) => {
+               const fb = FIVE_BARS[id];
+               ['baseLeft', 'baseRight'].forEach((mKey) => {
+                 const motor = fb.motors[mKey];
+                 const curAngle = mKey === 'baseLeft' ? fb.leftAngle : fb.rightAngle;
+                 const curSpeed = mKey === 'baseLeft' ? fb.leftSpeed : fb.rightSpeed;
+                 const angleError = (motor.desiredAngle ?? 0) - curAngle;
+                 const speedError = (motor.desiredSpeed ?? 0) - curSpeed;
+                 let torque = (motor.kP || 80) * angleError + (motor.kD || 2) * speedError;
+                 const maxT = motor.maxTorque || 0.001;
+                 if (torque > maxT) torque = maxT;
+                 if (torque < -maxT) torque = -maxT;
+                 const angAcc = torque / fb.inertia;
+                 if (mKey === 'baseLeft') {
+                   fb.leftSpeed += angAcc * dt;
+                   fb.leftAngle += fb.leftSpeed * dt;
+                 } else {
+                   fb.rightSpeed += angAcc * dt;
+                   fb.rightAngle += fb.rightSpeed * dt;
+                 }
+                 motor.temp += (torque * torque) * 0.01 * dt;
+                 motor.temp += -0.05 * (motor.temp - ambientTemp) * dt;
+                 motor.temp = Math.max(ambientTemp, Math.min(200, motor.temp));
+               });
+             });
+           }
+           function publish() {
+             const bodies = {};
+             const motors = {};
+             Object.keys(FIVE_BARS).forEach((id) => {
+               const fb = FIVE_BARS[id];
+               const eff = forwardKinematics(fb);
+               bodies[id + '-payload'] = { x: eff.x, y: eff.y, angle: 0, vx: 0, vy: 0, av: 0 };
+               motors[id + '-baseLeftJoint'] = { desiredAngle: fb.motors.baseLeft.desiredAngle, desiredSpeed: fb.motors.baseLeft.desiredSpeed, temp: fb.motors.baseLeft.temp, maxTorque: fb.motors.baseLeft.maxTorque };
+               motors[id + '-baseRightJoint'] = { desiredAngle: fb.motors.baseRight.desiredAngle, desiredSpeed: fb.motors.baseRight.desiredSpeed, temp: fb.motors.baseRight.temp, maxTorque: fb.motors.baseRight.maxTorque };
+             });
+             Object.keys(BODIES).forEach((id) => {
+               const b = BODIES[id];
+               bodies[id] = { x: b.x, y: b.y, angle: b.angle, vx: b.vx, vy: b.vy, av: b.av };
+             });
+             postMessage({ type: 'state', t: now() / 1000, bodies, joints: JOINTS, motors });
+           }
+           let loopId = null;
+           function runLoop() {
+             if (!running) return;
+             const t = now();
+             if (!lastT) lastT = t;
+             let dt = Math.min((t - lastT) / 1000, 0.05);
+             lastT = t;
+             step(dt);
+             publishAccum += (dt * 1000);
+             if (publishAccum >= publishMs) {
+               publish();
+               publishAccum = 0;
+             }
+             loopId = setTimeout(runLoop, 0);
+           }
+           onmessage = (ev) => {
+             const msg = ev.data || {};
+             try {
+               switch (msg.type) {
+                 case 'init': {
+                   if (msg.config) {
+                     if (msg.config.timeStep) stepMs = 1000 / (1 / msg.config.timeStep);
+                     if (msg.config.publishHz) publishMs = 1000 / msg.config.publishHz;
+                     if (typeof msg.config.ambientTemp === 'number') ambientTemp = msg.config.ambientTemp;
+                   }
+                   postMessage({ type: 'inited' });
+                   break;
+                 }
+                 case 'createBody': {
+                   createBody(msg.id, msg.x || 0, msg.y || 0, msg.box || { w: 1, h: 1 }, msg.dynamic !== false);
+                   break;
+                 }
+                 case 'createRevoluteJoint': {
+                   createRevoluteJoint(msg.id, msg.bodyA, msg.bodyB, msg.anchorA || null, msg.anchorB || null, msg.motor || null);
+                   break;
+                 }
+                 case 'setBodyPosition': {
+                   setBodyPosition(msg.id, msg.x || 0, msg.y || 0);
+                   break;
+                 }
+                 case 'setBodyVelocity': {
+                   setBodyVelocity(msg.id, msg.vx || 0, msg.vy || 0);
+                   break;
+                 }
+                 case 'setBodyTransform': {
+                   setBodyTransform(msg.id, msg.x || 0, msg.y || 0, msg.angle || 0);
+                   break;
+                 }
+                 case 'createFiveBar': {
+                   createFiveBarInternal(msg.id, msg.config);
+                   postMessage({ type: 'createdFiveBar', id: msg.id });
+                   break;
+                 }
+                 case 'setMotor': {
+                   const { id, motor } = msg;
+                   if (!id || !motor) break;
+                   const prefix = id.split('-')[0];
+                   const fb = FIVE_BARS[prefix];
+                   if (!fb) break;
+                   if (id.endsWith('baseLeftJoint')) Object.assign(fb.motors.baseLeft, motor);
+                   else if (id.endsWith('baseRightJoint')) Object.assign(fb.motors.baseRight, motor);
+                   break;
+                 }
+                 case 'start': {
+                   if (!running) {
+                     running = true;
+                     lastT = now();
+                     runLoop();
+                     postMessage({ type: 'started' });
+                   }
+                   break;
+                 }
+                 case 'stop': {
+                   running = false;
+                   if (loopId) clearTimeout(loopId);
+                   postMessage({ type: 'stopped' });
+                   break;
+                 }
+                 case 'stepOnce': {
+                   const dt = msg.dt || 1 / 120;
+                   step(dt);
+                   publish();
+                   break;
+                 }
+                 default:
+                   break;
+               }
+             } catch (err) {
+               postMessage({ type: 'error', error: { message: err && err.message ? err.message : String(err), stack: err && err.stack ? err.stack : null } });
+             }
+           };
+          `;
+          const blob = new Blob([workerSrc], { type: 'application/javascript' });
+          const url = URL.createObjectURL(blob);
+          const w = new Worker(url, { type: 'module' });
+          wireWorker(w);
+          this.post({ type: 'init', config: { timeStep: config?.timeStep || 1 / 120, publishHz: config?.publishHz || 60, ambientTemp: config?.ambientTemp || 25 } });
+        } catch (err2) {
+          cleanup();
+          reject(err2);
+          return;
+        }
+      }
     });
+
+    return promise;
   }
 
   stop() {

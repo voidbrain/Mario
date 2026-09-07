@@ -122,6 +122,9 @@ export class App implements OnDestroy {
       ChangeDetectorRef,
   ) {
 
+    (window as any).__marioEngine = this.engine;
+    (window as any).__marioApp = this;
+
     window.addEventListener(
       'keydown',
       this.onKeyDown,
