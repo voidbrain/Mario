@@ -326,6 +326,12 @@ export class GameEngine {
 
   private readonly moveSpeed = 220;
 
+  private readonly motionPredictionHorizon = 6;
+
+  private readonly maxHorizontalStep = 12;
+
+  private readonly maxVerticalStep = 10;
+
   private readonly jumpDuration = 0.9;
 
   private readonly jumpHeight = 150;
@@ -879,8 +885,16 @@ export class GameEngine {
         );
 
 
+      const predictedX =
+        this.validateMotionPath(
+          oldX,
+          newX,
+          'x',
+        );
+
+
       this.state.mario.x =
-        newX;
+        predictedX;
 
 
       if (
@@ -1024,6 +1038,26 @@ export class GameEngine {
         }
 
 
+        const predictedY =
+          this.validateMotionPath(
+            oldY,
+            newY,
+            'y',
+          );
+
+
+        if (predictedY !== newY) {
+
+          this.state.mario.y =
+            oldY;
+
+          this.jumpTime = 0;
+
+          return;
+
+        }
+
+
         this.state.mario.y =
           newY;
 
@@ -1064,6 +1098,26 @@ export class GameEngine {
             this.groundY;
 
           this.supportObstacle = null;
+
+          this.jumpTime = 0;
+
+          return;
+
+        }
+
+
+        const predictedY =
+          this.validateMotionPath(
+            oldY,
+            newY,
+            'y',
+          );
+
+
+        if (predictedY !== newY) {
+
+          this.state.mario.y =
+            oldY;
 
           this.jumpTime = 0;
 
@@ -1421,6 +1475,155 @@ export class GameEngine {
 
 
     return landing;
+
+  }
+
+
+  private validateMotionPath(
+   from: number,
+   to: number,
+   axis: 'x' | 'y',
+  ): number {
+
+   if (from === to) {
+     return from;
+   }
+
+
+   const delta =
+     to - from;
+
+   const stepSize =
+     axis === 'x'
+       ? this.maxHorizontalStep
+       : this.maxVerticalStep;
+
+   const stepCount =
+     Math.max(
+       1,
+       Math.ceil(
+         Math.abs(delta) /
+         stepSize,
+       ),
+     );
+
+   const horizon =
+     Math.min(
+       stepCount,
+       this.motionPredictionHorizon,
+     );
+
+   const sampleEvery =
+     Math.max(
+       1,
+       Math.ceil(
+         stepCount /
+         horizon,
+       ),
+     );
+
+
+   for (
+     let step = 1;
+     step <= stepCount;
+     step++
+   ) {
+
+     if (
+       step !== stepCount &&
+       step % sampleEvery !== 0 &&
+       step !== 1
+     ) {
+       continue;
+     }
+
+
+     const candidateValue =
+       from +
+       delta *
+       (step / stepCount);
+
+     const x =
+       axis === 'x'
+         ? candidateValue
+         : this.state.mario.x;
+
+     const y =
+       axis === 'y'
+         ? candidateValue
+         : this.state.mario.y;
+
+     if (!this.isPoseValid(x, y)) {
+       return from;
+     }
+   }
+
+
+   return to;
+
+  }
+
+
+  private isPoseValid(
+   x: number,
+   y: number,
+  ): boolean {
+
+   const mario: Character = {
+     ...this.state.mario,
+     x,
+     y,
+   };
+
+   if (
+     mario.x < 0 ||
+     mario.x + mario.width >
+     this.state.width
+   ) {
+     return false;
+   }
+
+   if (
+     mario.y < 0 ||
+     mario.y + mario.height >
+     this.state.height
+   ) {
+     return false;
+   }
+
+   for (
+     const obstacle of this.obstacles
+   ) {
+
+     if (
+       this.overlap(
+         mario,
+         obstacle,
+       )
+     ) {
+       return false;
+     }
+   }
+
+   return this.calculateMarioMechanismAtPose(
+     mario,
+   ).valid;
+
+  }
+
+
+  private calculateMarioMechanismAtPose(
+   mario: Character,
+  ): FiveBarGeometry {
+
+   return this.marioActuator.calculate({
+     x:
+       mario.x +
+       mario.width / 2,
+     y:
+       mario.y +
+       mario.height / 2,
+   });
 
   }
 
