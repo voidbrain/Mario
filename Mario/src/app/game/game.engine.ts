@@ -452,39 +452,40 @@ export class GameEngine {
 
     this.state.status = 'playing';
 
-    // Intentionally keep the simulation on the main thread until the worker is
-    // stable enough to drive the game reliably in-browser.
     if (this.useWorkerPhysics) {
       try {
         if (!this.simBridge) this.simBridge = new SimBridge();
+
+        this.simBridge.onState((msg: any) => {
+          if (!msg || !msg.bodies) return;
+          const marioBody = msg.bodies['mario-payload'];
+          const thwompBody = msg.bodies['thwomp-payload'];
+          if (marioBody) {
+            this.state.mario.x = Math.max(0, Math.min(this.state.width - this.state.mario.width, marioBody.x * 100 - this.state.mario.width / 2));
+            this.state.mario.y = Math.max(0, Math.min(this.state.height - this.state.mario.height, marioBody.y * 100 - this.state.mario.height / 2));
+          }
+          if (thwompBody) {
+            this.state.thwomp.x = Math.max(0, Math.min(this.state.width - this.state.thwomp.width, thwompBody.x * 100 - this.state.thwomp.width / 2));
+            this.state.thwomp.y = Math.max(0, Math.min(this.state.height - this.state.thwomp.height, thwompBody.y * 100 - this.state.thwomp.height / 2));
+          }
+          if (msg.motors) {
+            const left = msg.motors['mario-baseLeftJoint'];
+            const right = msg.motors['mario-baseRightJoint'];
+            if (left && typeof left.temp === 'number') this.motorTempLeft = left.temp;
+            if (right && typeof right.temp === 'number') this.motorTempRight = right.temp;
+          }
+        });
+
         this.simBridge.start({ scale: 100, timeStep: 1 / 120, publishHz: 60, ambientTemp: 25, timeoutMs: 3000 })
           .then(() => {
-            if (!this.simBridge) return;
-            this.simBridge.onState((msg: any) => {
-              if (!msg || !msg.bodies) return;
-              const marioBody = msg.bodies['mario-payload'];
-              const thwompBody = msg.bodies['thwomp-payload'];
-              if (marioBody) {
-                this.state.mario.x = Math.max(0, Math.min(this.state.width - this.state.mario.width, marioBody.x * 100 - this.state.mario.width / 2));
-                this.state.mario.y = Math.max(0, Math.min(this.state.height - this.state.mario.height, marioBody.y * 100 - this.state.mario.height / 2));
-              }
-              if (thwompBody) {
-                this.state.thwomp.x = Math.max(0, Math.min(this.state.width - this.state.thwomp.width, thwompBody.x * 100 - this.state.thwomp.width / 2));
-                this.state.thwomp.y = Math.max(0, Math.min(this.state.height - this.state.thwomp.height, thwompBody.y * 100 - this.state.thwomp.height / 2));
-              }
-              if (msg.motors) {
-                const left = msg.motors['mario-baseLeftJoint'];
-                const right = msg.motors['mario-baseRightJoint'];
-                if (left && typeof left.temp === 'number') this.motorTempLeft = left.temp;
-                if (right && typeof right.temp === 'number') this.motorTempRight = right.temp;
-              }
-            });
+            const bridge = this.simBridge;
+            if (!bridge) return;
 
             const scale = 100;
             const mBaseLeft = this.marioActuator.params.baseLeft;
             const mBaseRight = this.marioActuator.params.baseRight;
             const mEff = { x: (this.state.mario.x + this.state.mario.width / 2) / scale, y: (this.state.mario.y + this.state.mario.height / 2) / scale };
-            this.simBridge.createFiveBar('mario', {
+            bridge.createFiveBar('mario', {
               baseLeft: { x: mBaseLeft.x / scale, y: mBaseLeft.y / scale },
               baseRight: { x: mBaseRight.x / scale, y: mBaseRight.y / scale },
               effector: mEff,
@@ -497,7 +498,7 @@ export class GameEngine {
             const tBaseLeft = this.thwompActuator.params.baseLeft;
             const tBaseRight = this.thwompActuator.params.baseRight;
             const tEff = { x: (this.state.thwomp.x + this.state.thwomp.width / 2) / scale, y: (this.state.thwomp.y + this.state.thwomp.height / 2) / scale };
-            this.simBridge.createFiveBar('thwomp', {
+            bridge.createFiveBar('thwomp', {
               baseLeft: { x: tBaseLeft.x / scale, y: tBaseLeft.y / scale },
               baseRight: { x: tBaseRight.x / scale, y: tBaseRight.y / scale },
               effector: tEff,
@@ -507,7 +508,8 @@ export class GameEngine {
               motor: { maxTorque: this.motorTorqueCapacity, initTemp: this.motorTempRight, kP: 80, kD: 2 },
             });
 
-            this.simBridge.post({ type: 'start' });
+            (bridge as any).running = true;
+            bridge.post({ type: 'start' });
           })
           .catch((err) => {
             console.warn('SimBridge failed to initialize:', err);
@@ -591,53 +593,54 @@ export class GameEngine {
       return;
     }
 
+    const workerState = this.useWorkerPhysics && this.simBridge ? this.simBridge.getLastState && this.simBridge.getLastState() : null;
+    const workerReady = !!(this.useWorkerPhysics && this.simBridge && (this.simBridge.isRunning() || workerState));
+    const bridge = this.simBridge;
 
-    // Prefer the worker/Planck path when it is active; fall back to the stable
-    // main-thread logic only when the worker is unavailable.
-    if (this.useWorkerPhysics && this.simBridge && this.simBridge.isRunning()) {
-      let vx = 0;
-      if (input.left) vx -= this.moveSpeed;
-      if (input.right) vx += this.moveSpeed;
+    if (workerReady && bridge) {
+     let vx = 0;
+     if (input.left) vx -= this.moveSpeed;
+     if (input.right) vx += this.moveSpeed;
 
-      const scale = 100;
-      const last = this.simBridge.getLastState && this.simBridge.getLastState();
-      let effXm: number, effYm: number;
-      if (last && last.bodies && last.bodies['mario-payload']) {
-        effXm = last.bodies['mario-payload'].x;
-        effYm = last.bodies['mario-payload'].y;
-      } else {
-        effXm = (this.state.mario.x + this.state.mario.width / 2) / scale;
-        effYm = (this.state.mario.y + this.state.mario.height / 2) / scale;
-      }
+     const scale = 100;
+     const last = workerState;
+     let effXm: number, effYm: number;
+     if (last && last.bodies && last.bodies['mario-payload']) {
+       effXm = last.bodies['mario-payload'].x;
+       effYm = last.bodies['mario-payload'].y;
+     } else {
+       effXm = (this.state.mario.x + this.state.mario.width / 2) / scale;
+       effYm = (this.state.mario.y + this.state.mario.height / 2) / scale;
+     }
 
-      const desiredXm = effXm + (vx * dt) / scale;
-      const baseLeft = this.marioActuator.params.baseLeft;
-      const baseRight = this.marioActuator.params.baseRight;
-      const baseLeftM = { x: baseLeft.x / scale, y: baseLeft.y / scale };
-      const baseRightM = { x: baseRight.x / scale, y: baseRight.y / scale };
+     const desiredXm = effXm + (vx * dt) / scale;
+     const baseLeft = this.marioActuator.params.baseLeft;
+     const baseRight = this.marioActuator.params.baseRight;
+     const baseLeftM = { x: baseLeft.x / scale, y: baseLeft.y / scale };
+     const baseRightM = { x: baseRight.x / scale, y: baseRight.y / scale };
 
-      const leftDesiredAngle = Math.atan2(effYm - baseLeftM.y, desiredXm - baseLeftM.x);
-      const rightDesiredAngle = Math.atan2(effYm - baseRightM.y, desiredXm - baseRightM.x);
+     const leftDesiredAngle = Math.atan2(effYm - baseLeftM.y, desiredXm - baseLeftM.x);
+     const rightDesiredAngle = Math.atan2(effYm - baseRightM.y, desiredXm - baseRightM.x);
 
-      this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
-      this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+     bridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+     bridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, desiredSpeed: 0, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
 
-      if (input.jumpPressed && this.jumpCooldown === 0) {
-        this.jumpCooldown = this.jumpCooldownDuration;
-        const jumpDelta = -1.2;
-        this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle + jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
-        this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle - jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
-        setTimeout(() => {
-          if (!this.simBridge) return;
-          this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
-          this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
-        }, 120);
-      }
+     if (input.jumpPressed && this.jumpCooldown === 0) {
+       this.jumpCooldown = this.jumpCooldownDuration;
+       const jumpDelta = -1.2;
+       bridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle + jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
+       bridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle - jumpDelta, maxTorque: this.motorTorqueCapacity * 2, kP: 150, kD: 5 });
+       setTimeout(() => {
+         if (!this.simBridge) return;
+         this.simBridge.setMotor('mario-baseLeftJoint', { desiredAngle: leftDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+         this.simBridge.setMotor('mario-baseRightJoint', { desiredAngle: rightDesiredAngle, maxTorque: this.motorTorqueCapacity, kP: 80, kD: 2 });
+       }, 120);
+     }
 
-      if (last && last.bodies && last.bodies['thwomp-payload']) {
-        this.state.thwomp.x = Math.max(0, Math.min(this.state.width - this.state.thwomp.width, last.bodies['thwomp-payload'].x * 100 - this.state.thwomp.width / 2));
-        this.state.thwomp.y = Math.max(0, Math.min(this.state.height - this.state.thwomp.height, last.bodies['thwomp-payload'].y * 100 - this.state.thwomp.height / 2));
-      }
+     if (last && last.bodies && last.bodies['thwomp-payload']) {
+       this.state.thwomp.x = Math.max(0, Math.min(this.state.width - this.state.thwomp.width, last.bodies['thwomp-payload'].x * 100 - this.state.thwomp.width / 2));
+       this.state.thwomp.y = Math.max(0, Math.min(this.state.height - this.state.thwomp.height, last.bodies['thwomp-payload'].y * 100 - this.state.thwomp.height / 2));
+     }
     } else {
       this.updateThwomp(dt);
       this.updateMario(

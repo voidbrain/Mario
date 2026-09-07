@@ -52,6 +52,110 @@ function makeWorld() {
   world = new planck.World(planck.Vec2(0, -9.8));
 }
 
+const fiveBars: Record<string, any> = {};
+
+function createFiveBarInternal(idPrefix: string, cfg: any) {
+  if (!world) return;
+
+  const payload = cfg.payloadSize || { w: 0.3, h: 0.3 };
+  const thickness = cfg.linkThickness || 0.05;
+  const baseLeft = { x: cfg.baseLeft.x, y: cfg.baseLeft.y };
+  const baseRight = { x: cfg.baseRight.x, y: cfg.baseRight.y };
+  const effector = { x: cfg.effector.x, y: cfg.effector.y };
+  const upper = cfg.upperArm;
+  const lower = cfg.lowerArm;
+
+  const leftVec = { x: effector.x - baseLeft.x, y: effector.y - baseLeft.y };
+  const leftDist = Math.hypot(leftVec.x, leftVec.y) || 1;
+  const leftAngle = Math.atan2(leftVec.y, leftVec.x);
+  const leftLinkLen = Math.min(upper + lower, Math.max(upper * 0.6, leftDist));
+  const leftLinkCenter = { x: baseLeft.x + (leftVec.x / leftDist) * (leftLinkLen / 2), y: baseLeft.y + (leftVec.y / leftDist) * (leftLinkLen / 2) };
+
+  const rightVec = { x: effector.x - baseRight.x, y: effector.y - baseRight.y };
+  const rightDist = Math.hypot(rightVec.x, rightVec.y) || 1;
+  const rightAngle = Math.atan2(rightVec.y, rightVec.x);
+  const rightLinkLen = Math.min(upper + lower, Math.max(upper * 0.6, rightDist));
+  const rightLinkCenter = { x: baseRight.x + (rightVec.x / rightDist) * (rightLinkLen / 2), y: baseRight.y + (rightVec.y / rightDist) * (rightLinkLen / 2) };
+
+  const leftBaseBody = world.createBody({ type: 'static', position: planck.Vec2(baseLeft.x, baseLeft.y) });
+  leftBaseBody.createFixture(planck.Box(0.05 / 2, 0.05 / 2), { density: 0 });
+  bodies[`${idPrefix}-baseLeft`] = leftBaseBody;
+
+  const rightBaseBody = world.createBody({ type: 'static', position: planck.Vec2(baseRight.x, baseRight.y) });
+  rightBaseBody.createFixture(planck.Box(0.05 / 2, 0.05 / 2), { density: 0 });
+  bodies[`${idPrefix}-baseRight`] = rightBaseBody;
+
+  const leftLinkBody = world.createBody({ type: 'dynamic', position: planck.Vec2(leftLinkCenter.x, leftLinkCenter.y) });
+  leftLinkBody.createFixture(planck.Box(leftLinkLen / 2, thickness / 2), { density: 1.0, friction: 0.3 });
+  bodies[`${idPrefix}-leftLink`] = leftLinkBody;
+
+  const rightLinkBody = world.createBody({ type: 'dynamic', position: planck.Vec2(rightLinkCenter.x, rightLinkCenter.y) });
+  rightLinkBody.createFixture(planck.Box(rightLinkLen / 2, thickness / 2), { density: 1.0, friction: 0.3 });
+  bodies[`${idPrefix}-rightLink`] = rightLinkBody;
+
+  const payloadBody = world.createBody({ type: 'dynamic', position: planck.Vec2(effector.x, effector.y) });
+  payloadBody.createFixture(planck.Box(payload.w / 2, payload.h / 2), { density: 1.0, friction: 0.3 });
+  bodies[`${idPrefix}-payload`] = payloadBody;
+
+  const leftAnchorA = planck.Vec2(baseLeft.x, baseLeft.y);
+  const leftAnchorB = planck.Vec2(leftLinkCenter.x, leftLinkCenter.y);
+  const leftJoint = world.createJoint(
+    planck.RevoluteJoint({ enableMotor: false }, leftBaseBody, leftLinkBody, leftAnchorA),
+  );
+  const leftPayloadJoint = world.createJoint(
+    planck.RevoluteJoint({ enableMotor: false }, leftLinkBody, payloadBody, planck.Vec2(leftLinkCenter.x + (leftVec.x / leftDist) * (leftLinkLen / 2), leftLinkCenter.y + (leftVec.y / leftDist) * (leftLinkLen / 2))),
+  );
+  const rightAnchorA = planck.Vec2(baseRight.x, baseRight.y);
+  const rightAnchorB = planck.Vec2(rightLinkCenter.x, rightLinkCenter.y);
+  const rightJoint = world.createJoint(
+    planck.RevoluteJoint({ enableMotor: false }, rightBaseBody, rightLinkBody, rightAnchorA),
+  );
+  const rightPayloadJoint = world.createJoint(
+    planck.RevoluteJoint({ enableMotor: false }, rightLinkBody, payloadBody, planck.Vec2(rightLinkCenter.x + (rightVec.x / rightDist) * (rightLinkLen / 2), rightLinkCenter.y + (rightVec.y / rightDist) * (rightLinkLen / 2))),
+  );
+
+  joints[`${idPrefix}-baseLeftJoint`] = leftJoint;
+  joints[`${idPrefix}-leftPayloadJoint`] = leftPayloadJoint;
+  joints[`${idPrefix}-baseRightJoint`] = rightJoint;
+  joints[`${idPrefix}-rightPayloadJoint`] = rightPayloadJoint;
+
+  const motorCfg = cfg.motor || {};
+  const motorState = {
+    desiredAngle: leftAngle,
+    desiredSpeed: 0,
+    maxTorque: motorCfg.maxTorque || 5,
+    maxSpeed: motorCfg.maxSpeed || 20,
+    kP: motorCfg.kP || 80,
+    kD: motorCfg.kD || 2,
+    temp: motorCfg.initTemp || ambientTemp,
+  };
+  motors[`${idPrefix}-baseLeftJoint`] = { ...motorState };
+  motors[`${idPrefix}-baseRightJoint`] = { ...motorState, desiredAngle: rightAngle, temp: motorCfg.initTemp || ambientTemp };
+
+  fiveBars[idPrefix] = {
+    idPrefix,
+    baseLeft,
+    baseRight,
+    effector,
+    upper,
+    lower,
+    leftAngle,
+    rightAngle,
+    leftSpeed: 0,
+    rightSpeed: 0,
+    leftLinkLen,
+    rightLinkLen,
+    leftLinkCenter,
+    rightLinkCenter,
+  };
+
+  leftLinkBody.setAngle(leftAngle);
+  rightLinkBody.setAngle(rightAngle);
+  payloadBody.setTransform(planck.Vec2(effector.x, effector.y), 0);
+
+  return { leftBaseBody, rightBaseBody, leftLinkBody, rightLinkBody, payloadBody };
+}
+
 function stepPhysics(dt: number) {
   if (!world) return;
   // apply motor torques as simple PD controllers on revolute joints
@@ -181,6 +285,13 @@ onmessage = (ev: MessageEvent) => {
       body.createFixture(planck.Box(box.w / 2, box.h / 2), { density: 1.0, friction: 0.3 });
       bodies[id] = body;
       postMessage({ type: 'createdBody', id });
+      break;
+    }
+
+    case 'createFiveBar': {
+      if (!world) break;
+      createFiveBarInternal(msg.id, msg.config);
+      postMessage({ type: 'createdFiveBar', id: msg.id });
       break;
     }
 
