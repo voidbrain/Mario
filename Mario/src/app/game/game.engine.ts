@@ -346,6 +346,15 @@ export class GameEngine {
 
   private readonly maxMotorTorqueDemand = 1.8;
 
+  // Thermal / torque model (simple approximations)
+  private motorTempLeft = 25; // Celsius
+  private motorTempRight = 25; // Celsius
+  private readonly motorAmbientTemp = 25; // Celsius
+  private readonly motorMaxTemp = 80; // Celsius - critical
+  private readonly motorHeatingCoeff = 0.6; // temp rise per (torque^2 * s)
+  private readonly motorCoolingCoeff = 0.25; // cooling rate toward ambient per second
+  private readonly motorTorqueCapacity = 2.2; // peak torque capacity (arbitrary units)
+
   private readonly maxJumpPlannerSamples = 6;
 
   private readonly trajectoryCandidateCount = 5;
@@ -492,6 +501,8 @@ export class GameEngine {
         ),
       );
 
+    // Update motor thermal model continuously (cooling)
+    this.updateMotorThermals(dt);
 
     /*
     * Thwomp autoplay only starts when the run is active.
@@ -585,6 +596,25 @@ export class GameEngine {
     });
 
   }
+
+
+  // Simple motor thermal model: cool toward ambient and cap temps.
+  private updateMotorThermals(dt: number): void {
+
+    // passive cooling toward ambient
+    const leftDelta = -this.motorCoolingCoeff * (this.motorTempLeft - this.motorAmbientTemp);
+    const rightDelta = -this.motorCoolingCoeff * (this.motorTempRight - this.motorAmbientTemp);
+
+    this.motorTempLeft = Math.max(this.motorAmbientTemp, this.motorTempLeft + leftDelta * dt);
+    this.motorTempRight = Math.max(this.motorAmbientTemp, this.motorTempRight + rightDelta * dt);
+
+    // clamp to safe extremes
+    this.motorTempLeft = Math.min(this.motorTempLeft, this.motorMaxTemp * 1.5);
+    this.motorTempRight = Math.min(this.motorTempRight, this.motorMaxTemp * 1.5);
+
+  }
+
+
 
 
   private calculateThwompMechanism():
@@ -894,134 +924,21 @@ export class GameEngine {
       const oldX =
         this.state.mario.x;
 
-      const trajectoryCandidates =
-        this.buildTrajectoryCandidates(
+      const optimized =
+        this.optimizeHorizontalTrajectory(
           oldX,
           direction,
           deltaTime,
         );
 
-      let selectedX = oldX;
-      let selectedVelocity = this.marioVelocityX;
-      let selectedAcceleration = this.marioAccelerationX;
-      let selectedScore = Number.NEGATIVE_INFINITY;
-
-      for (
-        const candidate of trajectoryCandidates
-      ) {
-
-        const multiStepValid =
-          this.validateMultiStepCandidate(
-            oldX,
-            candidate.position,
-            direction,
-            deltaTime,
-          );
-
-        const predictedX =
-          this.validateMotionPath(
-            oldX,
-            candidate.position,
-            'x',
-          );
-
-        if (
-          !multiStepValid ||
-          predictedX !== candidate.position ||
-          !this.isMotorMotionFeasible(
-            oldX,
-            candidate.position,
-            deltaTime,
-          )
-        ) {
-          continue;
-        }
-
-
-        const score =
-          this.scoreTrajectoryCandidate(
-            candidate.position,
-            oldX,
-            candidate.velocity,
-            candidate.acceleration,
-            direction,
-          );
-
-        if (
-          score > selectedScore
-        ) {
-
-          selectedX = candidate.position;
-          selectedVelocity = candidate.velocity;
-          selectedAcceleration = candidate.acceleration;
-          selectedScore = score;
-
-        }
-
-      }
-
-      if (
-        selectedX === oldX
-      ) {
-
-        const fallbackX =
-          Math.max(
-            0,
-            Math.min(
-              this.state.width -
-              this.state.mario.width,
-              oldX +
-              direction *
-              Math.min(
-                this.moveSpeed *
-                deltaTime,
-                this.maxHorizontalStep *
-                2,
-              ),
-            ),
-          );
-
-        const fallbackValid =
-          this.validateMotionPath(
-            oldX,
-            fallbackX,
-            'x',
-          ) === fallbackX &&
-          this.isMotorMotionFeasible(
-            oldX,
-            fallbackX,
-            deltaTime,
-          );
-
-        if (fallbackValid) {
-
-          selectedX = fallbackX;
-          selectedVelocity =
-            direction *
-            this.moveSpeed *
-            0.85;
-          selectedAcceleration =
-            (selectedVelocity -
-              this.marioVelocityX) /
-            Math.max(deltaTime, 0.016);
-
-        }
-
-      }
-
-
       this.state.mario.x =
-        selectedX;
+        optimized.x;
 
       this.marioVelocityX =
-        selectedX === oldX
-          ? 0
-          : selectedVelocity;
+        optimized.velocity;
 
       this.marioAccelerationX =
-        selectedX === oldX
-          ? 0
-          : selectedAcceleration;
+        optimized.acceleration;
 
 
       if (
@@ -1816,6 +1733,349 @@ export class GameEngine {
   }
 
 
+  private optimizeHorizontalTrajectory(
+   startX: number,
+   direction: number,
+   deltaTime: number,
+  ): {
+   x: number;
+   velocity: number;
+   acceleration: number;
+  } {
+
+   const candidates =
+     this.buildTrajectoryCandidates(
+       startX,
+       direction,
+       deltaTime,
+     );
+
+   let best = {
+     x: startX,
+     velocity: this.marioVelocityX,
+     acceleration: this.marioAccelerationX,
+     score: Number.NEGATIVE_INFINITY,
+   };
+
+   for (
+     const candidate of candidates
+   ) {
+
+     if (
+       !this.isTrajectoryPlannerCandidateValid(
+         startX,
+         candidate.position,
+         direction,
+         deltaTime,
+       )
+     ) {
+       continue;
+     }
+
+     const predictedX =
+       this.validateMotionPath(
+         startX,
+         candidate.position,
+         'x',
+       );
+
+     if (
+       predictedX !== candidate.position ||
+       !this.isMotorMotionFeasible(
+         startX,
+         candidate.position,
+         deltaTime,
+       )
+     ) {
+       continue;
+     }
+
+     const score =
+       this.scoreTrajectoryCandidate(
+         candidate.position,
+         startX,
+         candidate.velocity,
+         candidate.acceleration,
+         direction,
+       );
+
+     if (
+       score > best.score
+     ) {
+
+       best = {
+         x: candidate.position,
+         velocity: candidate.velocity,
+         acceleration: candidate.acceleration,
+         score,
+       };
+
+     }
+
+   }
+
+   if (
+     best.x === startX
+   ) {
+
+     const fallbackX =
+       Math.max(
+         0,
+         Math.min(
+           this.state.width -
+           this.state.mario.width,
+           startX +
+           direction *
+           Math.min(
+             this.moveSpeed *
+             deltaTime,
+             this.maxHorizontalStep *
+             2,
+           ),
+         ),
+       );
+
+     const fallbackValid =
+       this.isTrajectoryPlannerCandidateValid(
+         startX,
+         fallbackX,
+         direction,
+         deltaTime,
+       ) &&
+       this.validateMotionPath(
+         startX,
+         fallbackX,
+         'x',
+       ) === fallbackX &&
+       this.isMotorMotionFeasible(
+         startX,
+         fallbackX,
+         deltaTime,
+       );
+
+     if (fallbackValid) {
+
+       return {
+         x: fallbackX,
+         velocity:
+           direction *
+           this.moveSpeed *
+           0.85,
+         acceleration:
+           (direction *
+             this.moveSpeed *
+             0.85 -
+             this.marioVelocityX) /
+           Math.max(deltaTime, 0.016),
+       };
+
+     }
+
+   }
+
+   return {
+     x: best.x,
+     velocity: best.velocity,
+     acceleration: best.acceleration,
+   };
+
+  }
+
+
+  private isTrajectoryPlannerCandidateValid(
+   startX: number,
+   targetX: number,
+   direction: number,
+   deltaTime: number,
+  ): boolean {
+
+   if (startX === targetX) {
+     return true;
+   }
+
+   const span =
+     targetX - startX;
+
+   const stepCount =
+     Math.max(
+       2,
+       Math.min(
+         this.motionPredictionHorizon,
+         Math.ceil(
+           Math.abs(span) /
+           Math.max(
+             this.maxHorizontalStep,
+             8,
+           ),
+         ),
+       ),
+     );
+
+   let previousX = startX;
+
+   for (
+     let step = 1;
+     step <= stepCount;
+     step++
+   ) {
+
+     const sampleX =
+       startX +
+       span *
+       (step / stepCount);
+
+     const deltaX =
+       sampleX -
+       previousX;
+
+     const jerk =
+       Math.abs(deltaX) /
+       Math.max(
+         deltaTime /
+         Math.max(stepCount, 1),
+         0.016,
+       );
+
+     if (
+       jerk >
+       this.maxHorizontalJerk
+     ) {
+       return false;
+     }
+
+     const samplePose = {
+       ...this.state.mario,
+       x: sampleX,
+     };
+
+     if (
+       !this.isPoseValid(
+         samplePose.x,
+         samplePose.y,
+       ) ||
+       this.collidesWithObstacleFromSide(
+         samplePose,
+       ) ||
+       this.estimateDynamicObstacleRisk(
+         samplePose,
+         step,
+         stepCount,
+       ) > 0
+     ) {
+       return false;
+     }
+
+     if (
+       Math.abs(sampleX - startX) >
+       this.moveSpeed *
+       deltaTime *
+       1.6 &&
+       direction *
+       (sampleX - startX) < 0
+     ) {
+       return false;
+     }
+
+     previousX = sampleX;
+   }
+
+   return true;
+
+  }
+
+
+  private estimateDynamicObstacleRisk(
+   pose: Character,
+   step: number,
+   stepCount: number,
+  ): number {
+
+   const timeFraction =
+     step / Math.max(stepCount, 1);
+
+   const thwompPrediction =
+     this.predictThwompFutureAt(
+       timeFraction,
+     );
+
+   const projectedPose: Character = {
+     ...pose,
+     x: pose.x,
+     y: pose.y,
+   };
+
+   if (
+     !this.overlap(
+       projectedPose,
+       thwompPrediction,
+     )
+   ) {
+     return 0;
+   }
+
+   const overlapArea =
+     Math.max(
+       0,
+       Math.min(
+         pose.x + pose.width,
+         thwompPrediction.x +
+         thwompPrediction.width,
+       ) -
+       Math.max(
+         pose.x,
+         thwompPrediction.x,
+       ),
+     ) *
+     Math.max(
+       0,
+       Math.min(
+         pose.y + pose.height,
+         thwompPrediction.y +
+         thwompPrediction.height,
+       ) -
+       Math.max(
+         pose.y,
+         thwompPrediction.y,
+       ),
+     );
+
+   return overlapArea > 0 ? 1 : 0;
+
+  }
+
+
+  private predictThwompFutureAt(
+   timeFraction: number,
+  ): Character {
+
+   // More conservative future prediction: allow the thwomp to continue along
+   // its current direction, but account for the reverse point and clamping.
+   const projected = { ...this.state.thwomp };
+
+   // Project forward in smaller time slice steps to respect reversal.
+   const steps = Math.max(1, Math.ceil(timeFraction * 6));
+   let y = this.state.thwomp.y;
+   let dir = this.thwompDirection;
+
+   for (let s = 0; s < steps; s++) {
+     const frac = (s + 1) / steps * timeFraction;
+     y = y + dir * this.thwompSpeed * (frac / timeFraction) * 0.6;
+
+     if (dir > 0 && y >= this.thwompReversePointY) {
+       y = this.thwompReversePointY;
+       dir = -1;
+     }
+
+     y = Math.max(this.thwompTop, Math.min(this.thwompBottom, y));
+   }
+
+   projected.y = y;
+
+   return projected;
+
+  }
+
+
   private validateMultiStepCandidate(
    startX: number,
    targetX: number,
@@ -1842,6 +2102,11 @@ export class GameEngine {
        ),
      );
 
+   // Estimate per-step dt to allocate thermal and jerk checks
+   const perStepDt = Math.max(deltaTime / stepCount, 0.016);
+
+   let previousX = startX;
+
    for (
      let step = 1;
      step <= stepCount;
@@ -1853,7 +2118,7 @@ export class GameEngine {
        span *
        (step / stepCount);
 
-     const samplePose = {
+     const samplePose: Character = {
        ...this.state.mario,
        x: sampleX,
      };
@@ -1870,22 +2135,43 @@ export class GameEngine {
        return false;
      }
 
-     const rate =
-       Math.abs(
-         sampleX -
-         startX,
-       ) /
-       Math.max(deltaTime, 0.016);
+     // Calculate small-step kinematics for this segment
+     const startG = this.calculateMarioMechanismAtPose({ ...this.state.mario, x: previousX });
+     const endG = this.calculateMarioMechanismAtPose(samplePose);
 
-     if (
-       rate >
-       this.moveSpeed *
-       1.5 &&
-       direction *
-       (sampleX - startX) < 0
-     ) {
+     const leftRate = Math.abs(endG.leftMotorAngle - startG.leftMotorAngle) / perStepDt;
+     const rightRate = Math.abs(endG.rightMotorAngle - startG.rightMotorAngle) / perStepDt;
+
+     const leftTorqueDemand = Math.abs(endG.leftMotorAngle - startG.leftMotorAngle) / perStepDt;
+     const rightTorqueDemand = Math.abs(endG.rightMotorAngle - startG.rightMotorAngle) / perStepDt;
+
+     const leftCapacity = Math.max(0.01, this.motorTorqueCapacity * (1 - Math.pow(leftRate / this.maxMotorAngularRate, 2)));
+     const rightCapacity = Math.max(0.01, this.motorTorqueCapacity * (1 - Math.pow(rightRate / this.maxMotorAngularRate, 2)));
+
+     if (leftTorqueDemand > leftCapacity || rightTorqueDemand > rightCapacity) {
        return false;
      }
+
+     const predictedLeftTemp = this.motorTempLeft + leftTorqueDemand * leftTorqueDemand * this.motorHeatingCoeff * perStepDt;
+     const predictedRightTemp = this.motorTempRight + rightTorqueDemand * rightTorqueDemand * this.motorHeatingCoeff * perStepDt;
+
+     if (predictedLeftTemp > this.motorMaxTemp || predictedRightTemp > this.motorMaxTemp) {
+       return false;
+     }
+
+     // dynamic obstacle check for denser forecasting
+     if (this.estimateDynamicObstacleRisk(samplePose, step, stepCount) > 0) {
+       return false;
+     }
+
+     // Jerk check (per-step)
+     const deltaX = sampleX - previousX;
+     const jerk = Math.abs(deltaX) / perStepDt;
+     if (jerk > this.maxHorizontalJerk) {
+       return false;
+     }
+
+     previousX = sampleX;
    }
 
    return true;
@@ -1989,30 +2275,58 @@ export class GameEngine {
      ) /
      Math.max(deltaTime, 0.016);
 
-   const leftTorque =
+   // Simple torque demand estimate (proportional to angular change speed)
+   const leftTorqueDemand =
      Math.abs(
        endGeometry.leftMotorAngle -
        startGeometry.leftMotorAngle,
-     ) *
-     this.maxMotorTorqueDemand;
+     ) / Math.max(deltaTime, 0.016);
 
-   const rightTorque =
+   const rightTorqueDemand =
      Math.abs(
        endGeometry.rightMotorAngle -
        startGeometry.rightMotorAngle,
-     ) *
-     this.maxMotorTorqueDemand;
+     ) / Math.max(deltaTime, 0.016);
 
-   return (
-     leftRate <=
-     this.maxMotorAngularRate &&
-     rightRate <=
-     this.maxMotorAngularRate &&
-     leftTorque <=
-     this.maxMotorTorqueDemand &&
-     rightTorque <=
-     this.maxMotorTorqueDemand
-   );
+   // Capacity reduces with angular rate (simple curve)
+   const leftCapacity =
+     Math.max(
+       0.01,
+       this.motorTorqueCapacity *
+       (1 - Math.pow(leftRate / this.maxMotorAngularRate, 2)),
+     );
+
+   const rightCapacity =
+     Math.max(
+       0.01,
+       this.motorTorqueCapacity *
+       (1 - Math.pow(rightRate / this.maxMotorAngularRate, 2)),
+     );
+
+   // Thermal prediction (do not apply - just predict)
+   const predictedLeftTemp =
+     this.motorTempLeft +
+     leftTorqueDemand * leftTorqueDemand *
+     this.motorHeatingCoeff * Math.max(deltaTime, 0.016);
+
+   const predictedRightTemp =
+     this.motorTempRight +
+     rightTorqueDemand * rightTorqueDemand *
+     this.motorHeatingCoeff * Math.max(deltaTime, 0.016);
+
+   const thermalOk =
+     predictedLeftTemp <= this.motorMaxTemp &&
+     predictedRightTemp <= this.motorMaxTemp;
+
+   const rateOk =
+     leftRate <= this.maxMotorAngularRate &&
+     rightRate <= this.maxMotorAngularRate;
+
+   const torqueOk =
+     leftTorqueDemand <= leftCapacity &&
+     rightTorqueDemand <= rightCapacity;
+
+   return rateOk && torqueOk && thermalOk;
 
   }
 
