@@ -403,14 +403,7 @@ export class GameEngine {
 
   start(): void {
 
-    if (
-      this.state.status === 'dead' ||
-      this.state.status === 'won'
-    ) {
-
-      this.reset();
-
-    }
+    this.reset();
 
     this.state.status = 'playing';
 
