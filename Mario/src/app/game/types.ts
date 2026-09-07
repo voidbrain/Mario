@@ -46,10 +46,20 @@ export interface FiveBarConfig {
 }
 
 export interface FiveBarGeometry {
+
   baseLeft: Point;
+
   baseRight: Point;
+
   leftJoint: Point;
+
   rightJoint: Point;
+
   effector: Point;
+
+  leftMotorAngle: number;
+
+  rightMotorAngle: number;
+
   valid: boolean;
 }

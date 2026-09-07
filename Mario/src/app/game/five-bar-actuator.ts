@@ -7,6 +7,7 @@ import {
 
 import {
   calculateFiveBar,
+  FiveBarMotorLimits,
 } from './five-bar';
 
 
@@ -19,6 +20,22 @@ export interface FiveBarActuatorParams {
   baseLeft: Point;
 
   baseRight: Point;
+
+  /*
+   * Physical motor limits in radians.
+   *
+   * Example:
+   *
+   * -Math.PI / 2
+   * +Math.PI / 2
+   */
+  motorLimits?: FiveBarMotorLimits;
+
+  /*
+   * Reserved for additional physical
+   * safety restrictions.
+   */
+  singularityMargin?: number;
 }
 
 
@@ -53,7 +70,10 @@ export class FiveBarActuator {
   ): FiveBarGeometry {
 
     const config:
-      FiveBarConfig = {
+      FiveBarConfig & {
+        motorLimits?: FiveBarMotorLimits;
+        singularityMargin?: number;
+      } = {
 
       baseLeft:
         this.params.baseLeft,
@@ -66,6 +86,12 @@ export class FiveBarActuator {
 
       lowerArm:
         this.params.lowerArm,
+
+      motorLimits:
+        this.params.motorLimits,
+
+      singularityMargin:
+        this.params.singularityMargin,
     };
 
 
@@ -78,15 +104,23 @@ export class FiveBarActuator {
       );
 
 
+    /*
+     * The effector itself must also remain inside
+     * the permitted actuator workspace.
+     */
+    const effectorInside =
+      pointInsideRect(
+        effector,
+        this.bounds,
+      );
+
+
     return {
 
       ...geometry,
 
       valid:
-        pointInsideRect(
-          effector,
-          this.bounds,
-        ) &&
+        effectorInside &&
         geometry.valid,
     };
   }
