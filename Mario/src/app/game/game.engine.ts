@@ -462,11 +462,13 @@ export class GameEngine {
 
 
     /*
-    * Thwomp autoplay is independent of game status.
-    * It must continue moving while the game is ready,
-    * playing, dead, etc.
+    * Thwomp autoplay only starts when the run is active.
+    * The ready screen should remain static until the player
+    * explicitly presses Start.
     */
-    this.updateThwomp(dt);
+    if (this.state.status === 'playing') {
+     this.updateThwomp(dt);
+    }
 
 
     /*
@@ -643,7 +645,10 @@ export class GameEngine {
     deltaTime: number,
   ): void {
 
-    if (!this.thwompAutoplay) {
+    if (
+      !this.thwompAutoplay ||
+      this.state.status !== 'playing'
+    ) {
       return;
     }
 

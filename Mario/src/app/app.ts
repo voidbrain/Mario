@@ -582,6 +582,14 @@ export class App implements OnDestroy {
           !event.repeat
         ) {
 
+          if (
+            this.engine.state.status !== 'playing'
+          ) {
+
+            this.start();
+
+          }
+
           this.input.jumpPressed =
             true;
         }
