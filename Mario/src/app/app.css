@@ -536,3 +536,17 @@ kbd {
 .motor:active {
   cursor: grabbing;
 }
+
+.physical-led {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #222;
+  opacity: 0.35;
+}
+
+.physical-led.on {
+  background: red;
+  opacity: 1;
+  box-shadow: 0 0 12px red;
+}

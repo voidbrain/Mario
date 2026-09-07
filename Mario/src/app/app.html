@@ -58,6 +58,117 @@
 
       </label>
 
+      <div
+        class="physical-led"
+        [class.on]="engine.state.physicalLimit.mario.invalid"
+      ></div>
+
+      <div class="row">
+
+        <span>5-bar</span>
+
+        <strong>
+
+          {{
+            engine.marioMechanism.valid
+              ? 'OK'
+              : 'OUT'
+          }}
+
+        </strong>
+
+      </div>
+
+      @if (engine.state.physicalLimit.mario.invalid) {
+        <div class="section-title">
+          Physical limit
+        </div>
+
+        <div class="row">
+          <span>Left node</span>
+
+          <strong>
+            {{
+              engine.state.physicalLimit.mario.left.north
+                ? 'N'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.left.south
+                ? 'S'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.left.west
+                ? 'W'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.left.east
+                ? 'E'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.left.motor
+                ? 'MOTOR'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.left.singularity
+                ? 'SINGULARITY'
+                : ''
+            }}
+          </strong>
+        </div>
+
+        <div class="row">
+          <span>Right node</span>
+
+          <strong>
+            {{
+              engine.state.physicalLimit.mario.right.north
+                ? 'N'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.right.south
+                ? 'S'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.right.west
+                ? 'W'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.right.east
+                ? 'E'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.right.motor
+                ? 'MOTOR'
+                : ''
+            }}
+
+            {{
+              engine.state.physicalLimit.mario.right.singularity
+                ? 'SINGULARITY'
+                : ''
+            }}
+          </strong>
+        </div>
+      }
+
     </div>
 
   </header>

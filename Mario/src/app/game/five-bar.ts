@@ -7,11 +7,15 @@ import {
 
 
 export interface FiveBarMotorLimits {
+
   leftMin: number;
+
   leftMax: number;
 
   rightMin: number;
+
   rightMax: number;
+
 }
 
 
@@ -21,16 +25,15 @@ export interface FiveBarPhysicalConfig
   motorLimits?: FiveBarMotorLimits;
 
   /*
-   * Minimum allowed absolute cosine of the angle
-   * between the two links at each elbow.
+   * Minimum allowed absolute sine of the angle
+   * between the upper and lower link.
    *
-   * 0   = allow 90 degrees and everything farther away.
-   * 1   = extremely restrictive.
-   *
-   * Keeping this around 0.05-0.15 is usually a useful
-   * starting point for a physical mechanism.
+   * 0    = exact singularity
+   * 0.05 = close to singularity
+   * 0.10 = more conservative
    */
   singularityMargin?: number;
+
 }
 
 
@@ -41,6 +44,7 @@ export interface JointSolution {
   angle: number;
 
   valid: boolean;
+
 }
 
 
@@ -107,6 +111,29 @@ export function calculateFiveBar(
     );
 
 
+  /*
+   * Physical singularity detection.
+   *
+   * A two-link arm becomes singular when the upper
+   * and lower links are approximately collinear.
+   */
+
+  const leftSingularity =
+    isSingular(
+      left,
+      target,
+      config.singularityMargin,
+    );
+
+
+  const rightSingularity =
+    isSingular(
+      right,
+      target,
+      config.singularityMargin,
+    );
+
+
   return {
 
     baseLeft:
@@ -136,8 +163,12 @@ export function calculateFiveBar(
       leftJointInside &&
       rightJointInside &&
       leftAngleValid &&
-      rightAngleValid,
+      rightAngleValid &&
+      !leftSingularity &&
+      !rightSingularity,
+
   };
+
 }
 
 
@@ -169,9 +200,8 @@ function solveTwoLink(
    * Target is too close to the motor.
    *
    * Do NOT clamp it.
-   *
-   * A real mechanism cannot magically reach it.
    */
+
   const minReach =
     Math.abs(
       upperArm -
@@ -182,6 +212,7 @@ function solveTwoLink(
   /*
    * Maximum physical reach.
    */
+
   const maxReach =
     upperArm +
     lowerArm;
@@ -203,7 +234,9 @@ function solveTwoLink(
       angle: 0,
 
       valid: false,
+
     };
+
   }
 
 
@@ -214,13 +247,6 @@ function solveTwoLink(
     );
 
 
-  /*
-   * Law of cosines.
-   *
-   * upperArm^2 + distance^2
-   * --------------------------------
-   *       2 * upperArm * distance
-   */
   const cosOffset =
     (
       upperArm * upperArm +
@@ -234,11 +260,6 @@ function solveTwoLink(
     );
 
 
-  /*
-   * Numerical protection only.
-   *
-   * This does NOT change the target distance.
-   */
   const offset =
     Math.acos(
       Math.max(
@@ -268,16 +289,15 @@ function solveTwoLink(
       base.y +
       Math.sin(angle) *
       upperArm,
+
   };
 
 
   /*
    * Verify the second link actually reaches
-   * the target after calculating the elbow.
-   *
-   * This protects against numerical problems and
-   * makes the returned configuration physically honest.
+   * the target.
    */
+
   const secondLinkDistance =
     Math.hypot(
       target.x - joint.x,
@@ -304,7 +324,59 @@ function solveTwoLink(
     angle,
 
     valid,
+
   };
+
+}
+
+
+function isSingular(
+  joint: JointSolution,
+  target: Point,
+  margin?: number,
+): boolean {
+
+  if (
+    margin === undefined ||
+    margin <= 0 ||
+    !joint.valid
+  ) {
+    return false;
+  }
+
+
+  /*
+   * Vector from base -> joint is represented by
+   * joint.angle.
+   *
+   * Vector joint -> target is the second link.
+   */
+
+  const secondAngle =
+    Math.atan2(
+      target.y - joint.point.y,
+      target.x - joint.point.x,
+    );
+
+
+  const relativeAngle =
+    normalizeAngle(
+      secondAngle -
+      joint.angle,
+    );
+
+
+  /*
+   * sin(relativeAngle) approaches zero when
+   * the two links become collinear.
+   */
+
+  return (
+    Math.abs(
+      Math.sin(relativeAngle),
+    ) < margin
+  );
+
 }
 
 
@@ -326,21 +398,20 @@ function pointInsideRect(
     point.y <=
       rect.y +
       rect.height
+
   );
+
 }
 
 
 /*
  * Handles normal angular ranges.
  *
- * Example:
- *
- * -90 -> +90
- *
  * Also supports wrapped ranges such as:
  *
  * 170 -> -170
  */
+
 function angleInsideRange(
   angle: number,
   min: number,
@@ -363,24 +434,15 @@ function angleInsideRange(
       a >= lo &&
       a <= hi
     );
+
   }
 
 
-  /*
-   * Wrapped interval.
-   *
-   * Example:
-   *
-   * 170 -> -170
-   *
-   * means:
-   *
-   * 170 ... 180 ... -180 ... -170
-   */
   return (
     a >= lo ||
     a <= hi
   );
+
 }
 
 
@@ -403,4 +465,5 @@ function normalizeAngle(
 
 
   return result;
+
 }
