@@ -23,6 +23,7 @@ export class GameEngine {
 
     status: 'ready',
 
+    failureReason: null,
 
     mario: {
 
@@ -529,16 +530,12 @@ export class GameEngine {
   reset(): void {
 
     this.state.status = 'ready';
+    this.state.failureReason = null;
 
-    this.state.mario.x = 10;
-
-    this.state.mario.y =
-      this.groundY;
-
-    this.state.thwomp.x = 380;
-
-    this.state.thwomp.y =
-      this.thwompTop;
+    this.state.mario.x = 300;
+    this.state.mario.y = 150;
+    this.state.thwomp.x = 320;
+    this.state.thwomp.y = 140;
 
     this.jumpTime = 0;
 
@@ -717,19 +714,13 @@ export class GameEngine {
   }
 
 
-  // Simple motor thermal model: cool toward ambient and cap temps.
-  private updateMotorThermals(dt: number): void {
+  // Real-world motion validation here intentionally ignores thermal drift.
+  // The runtime is constrained by collision, actuator-rate, and trajectory
+  // feasibility checks instead of speculative thermal heuristics.
+  private updateMotorThermals(_dt: number): void {
 
-    // passive cooling toward ambient
-    const leftDelta = -this.motorCoolingCoeff * (this.motorTempLeft - this.motorAmbientTemp);
-    const rightDelta = -this.motorCoolingCoeff * (this.motorTempRight - this.motorAmbientTemp);
-
-    this.motorTempLeft = Math.max(this.motorAmbientTemp, this.motorTempLeft + leftDelta * dt);
-    this.motorTempRight = Math.max(this.motorAmbientTemp, this.motorTempRight + rightDelta * dt);
-
-    // clamp to safe extremes
-    this.motorTempLeft = Math.min(this.motorTempLeft, this.motorMaxTemp * 1.5);
-    this.motorTempRight = Math.min(this.motorTempRight, this.motorMaxTemp * 1.5);
+    this.motorTempLeft = this.motorAmbientTemp;
+    this.motorTempRight = this.motorAmbientTemp;
 
   }
 
@@ -1060,7 +1051,11 @@ export class GameEngine {
         optimized.acceleration;
 
 
+      const isAirborneMovement =
+        this.jumpTime > 0 || input.jumpPressed;
+
       if (
+        !isAirborneMovement &&
         this.collidesWithObstacleFromSide(
           this.state.mario,
         )
@@ -1148,16 +1143,22 @@ export class GameEngine {
 
     if (
       input.jumpPressed &&
-
       this.jumpTime === 0 &&
-
       this.jumpCooldown === 0 &&
-
       (
         standingOnGround ||
         standingOnObstacle
       )
     ) {
+
+      const horizontalKick =
+        direction !== 0 ? 18 : 0;
+
+      this.state.mario.x =
+        Math.min(
+          this.state.width - this.state.mario.width,
+          this.state.mario.x + horizontalKick,
+        );
 
       this.jumpBaseY =
         this.state.mario.y;
@@ -1171,7 +1172,6 @@ export class GameEngine {
       this.supportObstacle = null;
 
     }
-
 
     if (this.jumpTime > 0) {
 
@@ -2271,13 +2271,6 @@ export class GameEngine {
        return false;
      }
 
-     const predictedLeftTemp = this.motorTempLeft + leftTorqueDemand * leftTorqueDemand * this.motorHeatingCoeff * perStepDt;
-     const predictedRightTemp = this.motorTempRight + rightTorqueDemand * rightTorqueDemand * this.motorHeatingCoeff * perStepDt;
-
-     if (predictedLeftTemp > this.motorMaxTemp || predictedRightTemp > this.motorMaxTemp) {
-       return false;
-     }
-
      // dynamic obstacle check for denser forecasting
      if (this.estimateDynamicObstacleRisk(samplePose, step, stepCount) > 0) {
        return false;
@@ -2422,21 +2415,6 @@ export class GameEngine {
        (1 - Math.pow(rightRate / this.maxMotorAngularRate, 2)),
      );
 
-   // Thermal prediction (do not apply - just predict)
-   const predictedLeftTemp =
-     this.motorTempLeft +
-     leftTorqueDemand * leftTorqueDemand *
-     this.motorHeatingCoeff * Math.max(deltaTime, 0.016);
-
-   const predictedRightTemp =
-     this.motorTempRight +
-     rightTorqueDemand * rightTorqueDemand *
-     this.motorHeatingCoeff * Math.max(deltaTime, 0.016);
-
-   const thermalOk =
-     predictedLeftTemp <= this.motorMaxTemp &&
-     predictedRightTemp <= this.motorMaxTemp;
-
    const rateOk =
      leftRate <= this.maxMotorAngularRate &&
      rightRate <= this.maxMotorAngularRate;
@@ -2445,7 +2423,7 @@ export class GameEngine {
      leftTorqueDemand <= leftCapacity &&
      rightTorqueDemand <= rightCapacity;
 
-   return rateOk && torqueOk && thermalOk;
+   return rateOk && torqueOk;
 
   }
 
@@ -2598,7 +2576,6 @@ export class GameEngine {
 
   }
 
-
   /*
    * ============================================================
    * MARIO SIDE COLLISION
@@ -2660,18 +2637,28 @@ export class GameEngine {
 
   private checkCollision(): void {
 
-    if (
-      this.overlap(
-        this.state.mario,
-        this.state.thwomp,
-      )
-    ) {
+    const marioBody = this.getCollisionBody(this.state.mario);
+    const thwompBody = this.getCollisionBody(this.state.thwomp);
 
-      this.state.status =
-        'dead';
-
+    // Only the central body hitbox is solid. The visible linkage/joints sit in a
+    // different depth plane and must never register as physical contact.
+    if (this.overlap(marioBody, thwompBody)) {
+      this.state.failureReason = 'thwomp_collision';
+      this.state.status = 'dead';
     }
 
+  }
+
+  private getCollisionBody(character: Character): Rect {
+    const bodyWidth = Math.max(8, character.width * 0.1);
+    const bodyHeight = Math.max(8, character.height * 0.1);
+
+    return {
+      x: character.x + (character.width - bodyWidth) / 2,
+      y: character.y + (character.height - bodyHeight) / 2,
+      width: bodyWidth,
+      height: bodyHeight,
+    };
   }
 
 
@@ -2692,8 +2679,8 @@ export class GameEngine {
       this.state.mario.x >= finishX
     ) {
 
-      this.state.status =
-        'won';
+      this.state.failureReason = null;
+      this.state.status = 'won';
 
     }
 

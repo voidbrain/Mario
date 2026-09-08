@@ -11,8 +11,8 @@ test('Mario wins by reaching the exit after jumping an obstacle', async ({ page 
     engine.state.status = 'playing';
     engine.state.mario.x = 80;
     engine.state.mario.y = engine.groundY;
-    engine.state.thwomp.x = 380;
-    engine.state.thwomp.y = 120;
+    engine.state.thwomp.x = 520;
+    engine.state.thwomp.y = 250;
 
     for (let step = 0; step < 500; step++) {
       const jumpPressed = step % 36 === 0 || step % 48 === 9;

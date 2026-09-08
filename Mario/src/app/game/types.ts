@@ -67,6 +67,8 @@ export interface GameState {
 
   status: GameStatus;
 
+  failureReason?: string | null;
+
   mario: Character;
 
   thwomp: Character;

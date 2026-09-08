@@ -659,6 +659,16 @@
 
       </div>
 
+      @if (engine.state.failureReason) {
+        <div class="row">
+          <span>Failure</span>
+
+          <strong>
+            {{ engine.state.failureReason }}
+          </strong>
+        </div>
+      }
+
 
       <div class="section-title">
         Mario
