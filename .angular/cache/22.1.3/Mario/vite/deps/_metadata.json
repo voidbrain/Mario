@@ -1,25 +1,31 @@
 {
-  "hash": "51511a6f",
-  "configHash": "5a9a310a",
-  "lockfileHash": "a947b993",
-  "browserHash": "ec9b1822",
+  "hash": "9ea50fd3",
+  "configHash": "ba98a135",
+  "lockfileHash": "0e70d794",
+  "browserHash": "f22f1830",
   "optimized": {
     "@angular/common": {
-      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/common/fesm2022/common.mjs",
+      "src": "../../../../../../../Mario.worktrees/real-world-path-prediction-validation/Mario/node_modules/@angular/common/fesm2022/common.mjs",
       "file": "@angular_common.js",
-      "fileHash": "44d5f918",
+      "fileHash": "22afa2aa",
       "needsInterop": false
     },
     "@angular/core": {
-      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/core/fesm2022/core.mjs",
+      "src": "../../../../../../../Mario.worktrees/real-world-path-prediction-validation/Mario/node_modules/@angular/core/fesm2022/core.mjs",
       "file": "@angular_core.js",
-      "fileHash": "7f4a9f07",
+      "fileHash": "080e83b3",
       "needsInterop": false
     },
     "@angular/platform-browser": {
-      "src": "../../../../../../../Mario.worktrees/joint-boundaries-issue-fix/Mario/node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs",
+      "src": "../../../../../../../Mario.worktrees/real-world-path-prediction-validation/Mario/node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs",
       "file": "@angular_platform-browser.js",
-      "fileHash": "4a89283a",
+      "fileHash": "12b4cefa",
+      "needsInterop": false
+    },
+    "planck-js": {
+      "src": "../../../../../../../Mario.worktrees/real-world-path-prediction-validation/Mario/node_modules/planck-js/dist/planck.mjs",
+      "file": "planck-js.js",
+      "fileHash": "fddba965",
       "needsInterop": false
     }
   },
