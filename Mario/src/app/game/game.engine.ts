@@ -5,11 +5,8 @@ import { FiveBarActuator } from './five-bar-actuator';
 export class GameEngine {
   readonly state: GameState = {
     width: 520,
-
     height: 600,
-
     status: 'ready',
-
     mario: {
       id: 'mario',
       x: 10,

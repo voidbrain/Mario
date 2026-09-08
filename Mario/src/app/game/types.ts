@@ -1,138 +1,72 @@
 export interface Character {
-
   id: string;
-
   x: number;
-
   y: number;
-
   width: number;
-
   height: number;
-
 }
 
-
-export type GameStatus =
-  | 'ready'
-  | 'playing'
-  | 'dead'
-  | 'won';
-
+export type GameStatus = 'ready' | 'playing' | 'dead' | 'won';
 
 export interface InputState {
-
   left: boolean;
-
   right: boolean;
-
   jumpPressed: boolean;
-
 }
-
 
 export interface PhysicalLimitNode {
-
   north: boolean;
-
   south: boolean;
-
   west: boolean;
-
   east: boolean;
-
   motor: boolean;
-
   singularity: boolean;
-
 }
-
 
 export interface PhysicalLimit {
-
   invalid: boolean;
-
   left: PhysicalLimitNode;
-
   right: PhysicalLimitNode;
-
 }
-
 
 export interface GameState {
-
   width: number;
-
   height: number;
-
   status: GameStatus;
-
   mario: Character;
-
   thwomp: Character;
-
   physicalLimit: {
-
     mario: PhysicalLimit;
-
     thwomp: PhysicalLimit;
-
   };
-
 }
-
 
 export interface Point {
-
   x: number;
-
   y: number;
-
 }
-
 
 export interface Rect {
-
   x: number;
-
   y: number;
-
   width: number;
-
   height: number;
-
 }
-
 
 export interface FiveBarConfig {
-
   baseLeft: Point;
-
   baseRight: Point;
-
   upperArm: number;
-
   lowerArm: number;
-
 }
 
-
 export interface FiveBarGeometry {
-
   baseLeft: Point;
-
   baseRight: Point;
-
   leftJoint: Point;
-
   rightJoint: Point;
-
   effector: Point;
-
   leftMotorAngle: number;
-
   rightMotorAngle: number;
-
   valid: boolean;
-
 }
