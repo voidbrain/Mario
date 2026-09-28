@@ -246,7 +246,7 @@ export class GameEngine {
   private readonly thwompBottom = 360;
   private readonly thwompSpeed = 120;
   private thwompDirection = 1;
-  thwompAutoplay = true;
+  thwompAutoplay = false;
 
   /*
    * ============================================================
@@ -297,6 +297,7 @@ export class GameEngine {
     this.state.mario.y = this.groundY;
     this.state.thwomp.x = 380;
     this.state.thwomp.y = this.thwompTop;
+    this.thwompAutoplay = true;
     this.jumpTime = 0;
     this.jumpBaseY = this.groundY;
     this.supportObstacle = null;
