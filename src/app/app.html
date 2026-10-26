@@ -1,0 +1,803 @@
+<main class="app">
+  <header class="toolbar">
+    <div class="title">
+      <h1>
+        Mario — 5-Bar Actuator
+      </h1>
+      <p>
+        Simulation only — hardware control is not implemented
+      </p>
+    </div>
+    <div class="toolbar-controls">
+      <button
+        type="button"
+        (click)="start()"
+      >
+        Start
+      </button>
+      <button
+        type="button"
+        (click)="reset()"
+      >
+        Reset simulation
+      </button>
+      <button
+        type="button"
+        (click)="toggleThwompAutoplay()"
+      >
+        T:
+        {{
+          engine.thwompAutoplay
+            ? 'Autoplay'
+            : 'Stopped'
+        }}
+      </button>
+      <button type="button" (click)="engine.stop()">Stop (Esc)</button>
+      <p role="status" aria-live="polite">{{ engine.faultReason }}</p>
+      <label class="mechanism-toggle">
+        <input
+          type="checkbox"
+          [checked]="showMechanisms()"
+          (change)="toggleMechanisms()"
+        />
+        Show mechanisms
+      </label>
+      <div
+        class="physical-led"
+        [class.on]="engine.state.physicalLimit.mario.invalid"
+      ></div>
+      <div class="row">
+        <span>5-bar</span>
+        <strong>
+          {{
+            engine.marioMechanism.valid
+              ? 'OK'
+              : 'OUT'
+          }}
+        </strong>
+      </div>
+      @if (engine.state.physicalLimit.mario.invalid) {
+        <div class="section-title">
+          Physical limit
+        </div>
+        <div class="row">
+          <span>Left node</span>
+          <strong>
+            {{
+              engine.state.physicalLimit.mario.left.north
+                ? 'N'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.left.south
+                ? 'S'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.left.west
+                ? 'W'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.left.east
+                ? 'E'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.left.motor
+                ? 'MOTOR'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.left.singularity
+                ? 'SINGULARITY'
+                : ''
+            }}
+          </strong>
+        </div>
+        <div class="row">
+          <span>Right node</span>
+          <strong>
+            {{
+              engine.state.physicalLimit.mario.right.north
+                ? 'N'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.right.south
+                ? 'S'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.right.west
+                ? 'W'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.right.east
+                ? 'E'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.right.motor
+                ? 'MOTOR'
+                : ''
+            }}
+            {{
+              engine.state.physicalLimit.mario.right.singularity
+                ? 'SINGULARITY'
+                : ''
+            }}
+          </strong>
+        </div>
+      }
+    </div>
+  </header>
+  <section class="simulation">
+    <div class="game-container">
+      <svg role="img" aria-label="Mario and Thwomp linkage simulation"
+        class="game"
+        viewBox="0 0 800 600"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <rect
+          x="0"
+          y="428"
+          width="800"
+          height="72"
+          class="ground"
+        />
+      @for (obstacle of engine.obstacles; track $index) {
+        <rect
+          [attr.x]="obstacle.x"
+          [attr.y]="obstacle.y"
+          [attr.width]="obstacle.width"
+          [attr.height]="obstacle.height"
+          rx="4"
+          class="obstacle"
+        />
+      }
+        <rect
+          [attr.x]="sceneBounds.x"
+          [attr.y]="sceneBounds.y"
+          [attr.width]="sceneBounds.width"
+          [attr.height]="sceneBounds.height"
+          class="scene-bounds"
+        />
+        <rect
+          [attr.x]="jointBounds.x"
+          [attr.y]="jointBounds.y"
+          [attr.width]="jointBounds.width"
+          [attr.height]="jointBounds.height"
+          class="joint-bounds"
+        />
+        @if (showMechanisms()) {
+          <!-- ================================================= -->
+          <!-- MARIO MECHANISM                                   -->
+          <!-- ================================================= -->
+          <g class="mechanism mario-mechanism">
+            <!-- Fixed bar -->
+            <line
+              [attr.x1]="engine.marioMechanism.baseLeft.x"
+              [attr.y1]="engine.marioMechanism.baseLeft.y"
+              [attr.x2]="engine.marioMechanism.baseRight.x"
+              [attr.y2]="engine.marioMechanism.baseRight.y"
+              class="fixed-bar"
+            />
+            <!-- Left upper arm -->
+            <line
+              [attr.x1]="engine.marioMechanism.baseLeft.x"
+              [attr.y1]="engine.marioMechanism.baseLeft.y"
+              [attr.x2]="engine.marioMechanism.leftJoint.x"
+              [attr.y2]="engine.marioMechanism.leftJoint.y"
+              class="bar"
+            />
+            <!-- Left lower arm -->
+            <line
+              [attr.x1]="engine.marioMechanism.leftJoint.x"
+              [attr.y1]="engine.marioMechanism.leftJoint.y"
+              [attr.x2]="engine.marioMechanism.effector.x"
+              [attr.y2]="engine.marioMechanism.effector.y"
+              class="bar"
+            />
+            <!-- Right upper arm -->
+            <line
+              [attr.x1]="engine.marioMechanism.baseRight.x"
+              [attr.y1]="engine.marioMechanism.baseRight.y"
+              [attr.x2]="engine.marioMechanism.rightJoint.x"
+              [attr.y2]="engine.marioMechanism.rightJoint.y"
+              class="bar"
+            />
+            <!-- Right lower arm -->
+            <line
+              [attr.x1]="engine.marioMechanism.rightJoint.x"
+              [attr.y1]="engine.marioMechanism.rightJoint.y"
+              [attr.x2]="engine.marioMechanism.effector.x"
+              [attr.y2]="engine.marioMechanism.effector.y"
+              class="bar"
+            />
+            <!-- MARIO LEFT MOTOR -->
+            <circle
+              [attr.cx]="engine.marioActuator.params.baseLeft.x"
+              [attr.cy]="engine.marioActuator.params.baseLeft.y"
+              r="18"
+              class="motor"
+
+            />
+            <!-- MARIO RIGHT MOTOR -->
+            <circle
+              [attr.cx]="engine.marioActuator.params.baseRight.x"
+              [attr.cy]="engine.marioActuator.params.baseRight.y"
+              r="18"
+              class="motor"
+
+            />
+            <!-- MARIO LEFT PASSIVE JOINT -->
+            <circle
+              [attr.cx]="engine.marioMechanism.leftJoint.x"
+              [attr.cy]="engine.marioMechanism.leftJoint.y"
+              r="8"
+              class="joint"
+            />
+            <!-- MARIO RIGHT PASSIVE JOINT -->
+            <circle
+              [attr.cx]="engine.marioMechanism.rightJoint.x"
+              [attr.cy]="engine.marioMechanism.rightJoint.y"
+              r="8"
+              class="joint"
+            />
+          </g>
+          <!-- ================================================= -->
+          <!-- MARIO EFFECTOR                                    -->
+          <!-- ================================================= -->
+          <circle
+            [attr.cx]="engine.marioMechanism.effector.x"
+            [attr.cy]="engine.marioMechanism.effector.y"
+            r="12"
+            class="effector mario-effector"
+          />
+          <!-- ================================================= -->
+          <!-- THWOMP MECHANISM                                  -->
+          <!-- ================================================= -->
+          <g class="mechanism thwomp-mechanism">
+            <!-- Fixed bar -->
+            <line
+              [attr.x1]="engine.thwompMechanism.baseLeft.x"
+              [attr.y1]="engine.thwompMechanism.baseLeft.y"
+              [attr.x2]="engine.thwompMechanism.baseRight.x"
+              [attr.y2]="engine.thwompMechanism.baseRight.y"
+              class="fixed-bar"
+            />
+            <!-- Left upper arm -->
+            <line
+              [attr.x1]="engine.thwompMechanism.baseLeft.x"
+              [attr.y1]="engine.thwompMechanism.baseLeft.y"
+              [attr.x2]="engine.thwompMechanism.leftJoint.x"
+              [attr.y2]="engine.thwompMechanism.leftJoint.y"
+              class="bar"
+            />
+            <!-- Left lower arm -->
+            <line
+              [attr.x1]="engine.thwompMechanism.leftJoint.x"
+              [attr.y1]="engine.thwompMechanism.leftJoint.y"
+              [attr.x2]="engine.thwompMechanism.effector.x"
+              [attr.y2]="engine.thwompMechanism.effector.y"
+              class="bar"
+            />
+            <!-- Right upper arm -->
+            <line
+              [attr.x1]="engine.thwompMechanism.baseRight.x"
+              [attr.y1]="engine.thwompMechanism.baseRight.y"
+              [attr.x2]="engine.thwompMechanism.rightJoint.x"
+              [attr.y2]="engine.thwompMechanism.rightJoint.y"
+              class="bar"
+            />
+            <!-- Right lower arm -->
+            <line
+              [attr.x1]="engine.thwompMechanism.rightJoint.x"
+              [attr.y1]="engine.thwompMechanism.rightJoint.y"
+              [attr.x2]="engine.thwompMechanism.effector.x"
+              [attr.y2]="engine.thwompMechanism.effector.y"
+              class="bar"
+            />
+            <!-- THWOMP LEFT MOTOR -->
+            <circle
+              [attr.cx]="engine.thwompActuator.params.baseLeft.x"
+              [attr.cy]="engine.thwompActuator.params.baseLeft.y"
+              r="18"
+              class="motor"
+
+            />
+            <!-- THWOMP RIGHT MOTOR -->
+            <circle
+              [attr.cx]="engine.thwompActuator.params.baseRight.x"
+              [attr.cy]="engine.thwompActuator.params.baseRight.y"
+              r="18"
+              class="motor"
+
+            />
+            <!-- THWOMP LEFT PASSIVE JOINT -->
+            <circle
+              [attr.cx]="engine.thwompMechanism.leftJoint.x"
+              [attr.cy]="engine.thwompMechanism.leftJoint.y"
+              r="8"
+              class="joint"
+            />
+            <!-- THWOMP RIGHT PASSIVE JOINT -->
+            <circle
+              [attr.cx]="engine.thwompMechanism.rightJoint.x"
+              [attr.cy]="engine.thwompMechanism.rightJoint.y"
+              r="8"
+              class="joint"
+            />
+          </g>
+          <!-- ================================================= -->
+          <!-- THWOMP EFFECTOR                                   -->
+          <!-- ================================================= -->
+          <circle
+            [attr.cx]="engine.thwompMechanism.effector.x"
+            [attr.cy]="engine.thwompMechanism.effector.y"
+            r="12"
+            class="effector thwomp-effector"
+          />
+        }
+        <!-- ================================================= -->
+        <!-- FINISH                                             -->
+        <!-- ================================================= -->
+        <line
+          x1="460"
+          y1="0"
+          x2="460"
+          y2="600"
+          class="finish"
+        />
+        <text
+          x="470"
+          y="40"
+          class="finish-label"
+        >
+          EXIT
+        </text>
+        <!-- ================================================= -->
+        <!-- THWOMP                                              -->
+        <!-- ================================================= -->
+        <g
+          [attr.transform]="
+            'translate(' +
+            engine.state.thwomp.x +
+            ',' +
+            engine.state.thwomp.y +
+            ')'
+          "
+          [style.cursor]="
+            engine.thwompAutoplay
+              ? 'default'
+              : 'grab'
+          "
+          style="touch-action: none;"
+          (pointerdown)="
+            onThwompPointerDown($event)
+          "
+          (pointermove)="
+            onThwompPointerMove($event)
+          "
+          (pointerup)="
+            onThwompPointerUp($event)
+          "
+          (pointercancel)="
+            onThwompPointerUp($event)
+          "
+        >
+          <rect
+            [attr.width]="engine.state.thwomp.width"
+            [attr.height]="engine.state.thwomp.height"
+            rx="8"
+            class="thwomp"
+          />
+          <text
+            [attr.x]="
+              engine.state.thwomp.width / 2
+            "
+            [attr.y]="
+              engine.state.thwomp.height / 2 + 10
+            "
+            text-anchor="middle"
+            class="enemy-label"
+          >
+            T
+          </text>
+        </g>
+        <!-- ================================================= -->
+        <!-- MARIO                                               -->
+        <!-- ================================================= -->
+        <g
+          [attr.transform]="
+            'translate(' +
+            engine.state.mario.x +
+            ',' +
+            engine.state.mario.y +
+            ')'
+          "
+        >
+          <rect
+            [attr.width]="engine.state.mario.width"
+            [attr.height]="engine.state.mario.height"
+            rx="6"
+            class="mario"
+          />
+          <text
+            x="17"
+            y="34"
+            text-anchor="middle"
+            class="mario-label"
+          >
+            M
+          </text>
+        </g>
+        <!-- ================================================= -->
+        <!-- STATUS                                              -->
+        <!-- ================================================= -->
+        @if (engine.state.status !== 'playing') {
+          <text
+            x="400"
+            y="45"
+            text-anchor="middle"
+            class="status"
+          >
+            @switch (engine.state.status) {
+              @case ('ready') {
+                SPACE TO START
+              }
+              @case ('dead') {
+                DEAD — RESET
+              }
+              @case ('fault') {
+                STOPPED — RESET REQUIRED
+              }
+              @case ('won') {
+                WIN!
+              }
+            }
+          </text>
+        }
+      </svg>
+    </div>
+    <!-- ===================================================== -->
+    <!-- DEBUG PANEL                                           -->
+    <!-- ===================================================== -->
+    <aside class="debug">
+      <h2>Simulation</h2>
+      <div class="row">
+        <span>Status</span>
+        <strong>
+          {{ engine.state.status }}
+        </strong>
+      </div>
+      <div class="section-title">
+        Mario
+      </div>
+      <div class="row">
+        <span>X</span>
+        <strong>
+          {{
+            engine.state.mario.x
+              | number:'1.0-0'
+          }}
+        </strong>
+      </div>
+      <div class="row">
+        <span>Y</span>
+        <strong>
+          {{
+            engine.state.mario.y
+              | number:'1.0-0'
+          }}
+        </strong>
+      </div>
+      <div class="row">
+        <span>5-bar</span>
+        <strong>
+          {{
+            engine.marioMechanism.valid
+              ? 'OK'
+              : 'OUT'
+          }}
+        </strong>
+      </div>
+      <div class="section-title">
+        Mario arms
+      </div>
+      <div class="row">
+        <span>
+          Upper arm
+        </span>
+        <input
+          type="number"
+          aria-label="Upper arm"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="
+            engine.marioActuator.params.upperArm
+          "
+          (input)="
+            updateArmLength(
+              engine.marioActuator,
+              'upperArm',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>
+          Lower arm
+        </span>
+        <input
+          type="number"
+          aria-label="Lower arm"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="
+            engine.marioActuator.params.lowerArm
+          "
+          (input)="
+            updateArmLength(
+              engine.marioActuator,
+              'lowerArm',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="section-title">
+        Thwomp
+      </div>
+      <div class="row">
+        <span>X</span>
+        <strong>
+          {{
+            engine.state.thwomp.x
+              | number:'1.0-0'
+          }}
+        </strong>
+      </div>
+      <div class="row">
+        <span>Y</span>
+        <strong>
+          {{
+            engine.state.thwomp.y
+              | number:'1.0-0'
+          }}
+        </strong>
+      </div>
+      <div class="row">
+        <span>5-bar</span>
+        <strong>
+          {{
+            engine.thwompMechanism.valid
+              ? 'OK'
+              : 'OUT'
+          }}
+        </strong>
+      </div>
+      <div class="section-title">
+        Thwomp arms
+      </div>
+      <div class="row">
+        <span>
+          Upper arm
+        </span>
+        <input
+          type="number"
+          aria-label="Upper arm"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="
+            engine.thwompActuator.params.upperArm
+          "
+          (input)="
+            updateArmLength(
+              engine.thwompActuator,
+              'upperArm',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>
+          Lower arm
+        </span>
+        <input
+          type="number"
+          aria-label="Lower arm"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="
+            engine.thwompActuator.params.lowerArm
+          "
+          (input)="
+            updateArmLength(
+              engine.thwompActuator,
+              'lowerArm',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="section-title">
+        Bounds
+      </div>
+      <div class="row">
+        <span>Blue X</span>
+        <input
+          type="number"
+          aria-label="Blue X"
+          [disabled]="engine.state.status === 'playing'"
+          [value]="sceneBounds.x"
+          (input)="
+            updateRect(
+              sceneBounds,
+              'x',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Blue Y</span>
+        <input
+          type="number"
+          aria-label="Blue Y"
+          [disabled]="engine.state.status === 'playing'"
+          [value]="sceneBounds.y"
+          (input)="
+            updateRect(
+              sceneBounds,
+              'y',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Blue W</span>
+        <input
+          type="number"
+          aria-label="Blue W"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="sceneBounds.width"
+          (input)="
+            updateRect(
+              sceneBounds,
+              'width',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Blue H</span>
+        <input
+          type="number"
+          aria-label="Blue H"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="sceneBounds.height"
+          (input)="
+            updateRect(
+              sceneBounds,
+              'height',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Orange X</span>
+        <input
+          type="number"
+          aria-label="Orange X"
+          [disabled]="engine.state.status === 'playing'"
+          [value]="jointBounds.x"
+          (input)="
+            updateRect(
+              jointBounds,
+              'x',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Orange Y</span>
+        <input
+          type="number"
+          aria-label="Orange Y"
+          [disabled]="engine.state.status === 'playing'"
+          [value]="jointBounds.y"
+          (input)="
+            updateRect(
+              jointBounds,
+              'y',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Orange W</span>
+        <input
+          type="number"
+          aria-label="Orange W"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="jointBounds.width"
+          (input)="
+            updateRect(
+              jointBounds,
+              'width',
+              $event
+            )
+          "
+        />
+      </div>
+      <div class="row">
+        <span>Orange H</span>
+        <input
+          type="number"
+          aria-label="Orange H"
+          [disabled]="engine.state.status === 'playing'"
+          min="1"
+          [value]="jointBounds.height"
+          (input)="
+            updateRect(
+              jointBounds,
+              'height',
+              $event
+            )
+          "
+        />
+      </div>
+      <hr>
+      <h2>Controls</h2>
+      <p>
+        <kbd>A</kbd>
+        <kbd>D</kbd>
+        or
+        <kbd>←</kbd>
+        <kbd>→</kbd>
+        move Mario
+      </p>
+      <p>
+        <kbd>SPACE</kbd>
+        jump / start
+      </p>
+      <p>
+        <kbd>R</kbd>
+        reset
+      </p>
+      <hr>
+      <h2>Mechanisms</h2>
+      <div class="legend">
+        <div>
+          <span class="legend-dot motor-dot"></span>
+          Motor
+        </div>
+        <div>
+          <span class="legend-dot joint-dot"></span>
+          Passive joint
+        </div>
+        <div>
+          <span class="legend-dot mario-dot"></span>
+          Mario effector
+        </div>
+        <div>
+          <span class="legend-dot thwomp-dot"></span>
+          Thwomp effector
+        </div>
+      </div>
+    </aside>
+  </section>
+</main>
